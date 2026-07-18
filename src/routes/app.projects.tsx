@@ -33,8 +33,8 @@ function AppProjectsIndex() {
   const [resetOpen, setResetOpen] = useState(false);
 
   const userId = user?.id ?? "";
-  const isAdmin = activeRole === "admin" && user?.roles.includes("admin");
-  const isLeader = activeRole === "leader" && user?.roles.includes("leader");
+  const isAdmin = activeRole === "admin" && Boolean(user?.roles.includes("admin"));
+  const isLeader = activeRole === "leader" && Boolean(user?.roles.includes("leader"));
 
   const visible = useMemo(() => {
     if (!user) return [];

@@ -22,6 +22,7 @@ export type CalendarEventDraft = Pick<
 >;
 
 type Result<T = LabCalendarEvent> = { ok: true; value: T } | { ok: false; error: string };
+type ActionResult = { ok: true } | { ok: false; error: string };
 
 const STORAGE_KEY = "nova.calendarEvents.v1";
 const scopes: CalendarEventScope[] = ["lab", "project"];
@@ -313,7 +314,7 @@ export function useCalendarEvents() {
     return ok ? { ok: true, value: next } : { ok: false, error: "Calendar event update failed." };
   }, []);
 
-  const removeEvent = useCallback((eventId: string) => {
+  const removeEvent = useCallback((eventId: string): ActionResult => {
     const current = getAll().find((event) => event.id === eventId);
     if (!current) return { ok: false, error: "Event not found." };
     return setAll(getAll().filter((event) => event.id !== eventId))

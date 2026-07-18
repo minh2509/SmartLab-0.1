@@ -29,6 +29,7 @@ export type LabPost = {
 export type PostDraft = Pick<LabPost, "title" | "excerpt" | "content" | "category">;
 
 type Result<T = LabPost> = { ok: true; post: T } | { ok: false; error: string };
+type ActionResult = { ok: true } | { ok: false; error: string };
 
 const STORAGE_KEY = "nova.labPosts.v1";
 const statuses: PostStatus[] = [
@@ -444,7 +445,7 @@ export function usePosts() {
       : { ok: false, error: "The publication could not be saved." };
   }, []);
 
-  const remove = useCallback((postId: string) => {
+  const remove = useCallback((postId: string): ActionResult => {
     const current = getAll();
     if (!current.some((post) => post.id === postId)) {
       return { ok: false, error: "Post not found." };

@@ -37,6 +37,7 @@ export type NotificationInput = Pick<
 };
 
 type Result<T = AppNotification> = { ok: true; value: T } | { ok: false; error: string };
+type ActionResult = { ok: true } | { ok: false; error: string };
 
 const STORAGE_KEY = "nova.notifications.v1";
 const EXPIRATION_DAYS = 30;
@@ -256,7 +257,7 @@ export function useNotifications(userId?: string) {
     );
   }, []);
 
-  const remove = useCallback((notificationId: string, ownerId: string) => {
+  const remove = useCallback((notificationId: string, ownerId: string): ActionResult => {
     const current = getAll().find((item) => item.id === notificationId);
     if (!current) return { ok: false, error: "Notification not found." };
     if (current.userId !== ownerId) {
