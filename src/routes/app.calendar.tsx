@@ -21,7 +21,7 @@ import { useAuth } from "@/lib/auth";
 
 export const Route = createFileRoute("/app/calendar")({
   head: () => ({
-    meta: [{ title: "Calendar — Nova workspace" }, { name: "robots", content: "noindex" }],
+    meta: [{ title: "Calendar — Smartworkspace" }, { name: "robots", content: "noindex" }],
   }),
   component: CalendarPage,
 });
@@ -542,7 +542,7 @@ function EventDetailDialog({
             </div>
             <h2 className="mt-3 text-base font-semibold text-ink">{event.title}</h2>
             <p className="mt-1 text-xs text-ink-soft">
-              {project ? project.name : event.scope === "lab" ? "Nova Lab" : "Project not found"}
+              {project ? project.name : event.scope === "lab" ? "SmartLab" : "Project not found"}
             </p>
           </div>
           <button

@@ -78,14 +78,14 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Nova Research Lab — AI, Robotics & Software Engineering" },
+      { title: "SmartResearch Lab — AI, Robotics & Software Engineering" },
       {
         name: "description",
         content:
-          "Nova Research Lab is a university research group building intelligent systems across AI, robotics, and software engineering.",
+          "SmartResearch Lab is a university research group building intelligent systems across AI, robotics, and software engineering.",
       },
-      { name: "author", content: "Nova Research Lab" },
-      { property: "og:title", content: "Nova Research Lab" },
+      { name: "author", content: "SmartResearch Lab" },
+      { property: "og:title", content: "SmartResearch Lab" },
       {
         property: "og:description",
         content: "Intelligent systems for the physical world — a university research lab.",

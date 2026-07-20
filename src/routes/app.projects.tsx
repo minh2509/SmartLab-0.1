@@ -18,7 +18,7 @@ import { notifyOnce } from "@/lib/notifications-data";
 
 export const Route = createFileRoute("/app/projects")({
   head: () => ({
-    meta: [{ title: "Projects — Nova workspace" }, { name: "robots", content: "noindex" }],
+    meta: [{ title: "Projects — Smartworkspace" }, { name: "robots", content: "noindex" }],
   }),
   component: AppProjectsIndex,
 });

@@ -44,7 +44,7 @@ export type EvaluationDraft = Pick<
 
 type Result<T = MemberEvaluation> = { ok: true; value: T } | { ok: false; error: string };
 
-const STORAGE_KEY = "nova.memberEvaluations.v1";
+const STORAGE_KEY = "smart.memberEvaluations.v1";
 export const scoreKeys: (keyof EvaluationScores)[] = [
   "taskCompletion",
   "workQuality",

@@ -23,7 +23,7 @@ import { ArrowLeft, Pencil, Lock, X } from "lucide-react";
 
 export const Route = createFileRoute("/app/projects_/$slug")({
   head: () => ({
-    meta: [{ title: "Project — Nova workspace" }, { name: "robots", content: "noindex" }],
+    meta: [{ title: "Project — Smartworkspace" }, { name: "robots", content: "noindex" }],
   }),
   notFoundComponent: () => <div className="p-8 text-sm text-ink-soft">Project not found.</div>,
   component: WorkspaceProjectDetail,

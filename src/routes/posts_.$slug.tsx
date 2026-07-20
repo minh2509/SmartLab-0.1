@@ -13,7 +13,7 @@ import {
 
 export const Route = createFileRoute("/posts_/$slug")({
   head: () => ({
-    meta: [{ title: "Post — Nova Research Lab" }],
+    meta: [{ title: "Post — SmartResearch Lab" }],
   }),
   component: PublicPostDetailPage,
 });

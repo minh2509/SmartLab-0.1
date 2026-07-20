@@ -9,7 +9,7 @@ import { ExternalLink, Eye } from "lucide-react";
 
 export const Route = createFileRoute("/app/evaluations")({
   head: () => ({
-    meta: [{ title: "Evaluations — Nova workspace" }, { name: "robots", content: "noindex" }],
+    meta: [{ title: "Evaluations — Smartworkspace" }, { name: "robots", content: "noindex" }],
   }),
   component: EvaluationsPage,
 });

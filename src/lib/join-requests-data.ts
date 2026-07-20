@@ -26,7 +26,7 @@ export type JoinRequestDraft = Pick<
 
 type Result<T = ProjectJoinRequest> = { ok: true; request: T } | { ok: false; error: string };
 
-const STORAGE_KEY = "nova.projectJoinRequests.v1";
+const STORAGE_KEY = "smart.projectJoinRequests.v1";
 const statuses: JoinRequestStatus[] = ["pending", "approved", "rejected", "cancelled"];
 
 function isRecord(value: unknown): value is Record<string, unknown> {

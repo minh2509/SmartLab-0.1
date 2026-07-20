@@ -173,7 +173,7 @@ A user may have multiple system roles.
 Example:
 
 ```ts
-roles: ["admin", "leader"]
+roles: ["admin", "leader"];
 ```
 
 A project may have multiple leaders.
@@ -315,12 +315,7 @@ Post statuses:
 
 ```ts
 type PostStatus =
-  | "draft"
-  | "pending_review"
-  | "needs_revision"
-  | "approved"
-  | "published"
-  | "rejected";
+  "draft" | "pending_review" | "needs_revision" | "approved" | "published" | "rejected";
 ```
 
 Rules:
@@ -436,23 +431,23 @@ Expected behavior:
 Expected demo accounts:
 
 ```text
-admin@nova.lab
+admin@smart.lab
 roles: Admin
 
-amara@nova.lab
+amara@smart.lab
 roles: Admin, Leader
 
-tran@nova.lab
+tran@smart.lab
 roles: Leader, Member
 
-linh@nova.lab
+linh@smart.lab
 roles: Member
 ```
 
 Expected demo password:
 
 ```text
-nova2026
+smart2026
 ```
 
 These credentials are demo-only.
@@ -852,7 +847,7 @@ Switching the active role must not grant a role the user does not already posses
 Validate that:
 
 ```ts
-user.roles.includes(activeRole)
+user.roles.includes(activeRole);
 ```
 
 before rendering role-specific access.
@@ -862,7 +857,7 @@ before rendering role-specific access.
 Do not rely on conditions such as:
 
 ```ts
-activeRole === "leader"
+activeRole === "leader";
 ```
 
 alone.
@@ -870,7 +865,7 @@ alone.
 Leader authorization must also verify:
 
 ```ts
-project.leaderIds.includes(currentUser.id)
+project.leaderIds.includes(currentUser.id);
 ```
 
 ### Admin and Leader overlap

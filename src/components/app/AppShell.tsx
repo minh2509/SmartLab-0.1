@@ -151,7 +151,7 @@ export function AppShell() {
             </span>
 
             <div className="leading-tight">
-              <div className="text-sm font-semibold tracking-tight">Nova Lab</div>
+              <div className="text-sm font-semibold tracking-tight">SmartLab</div>
 
               <div className="text-[10px] uppercase tracking-[0.14em] text-ink-soft">Workspace</div>
             </div>

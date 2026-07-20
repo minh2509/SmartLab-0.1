@@ -140,7 +140,7 @@ const seed: Project[] = [
   },
 ];
 
-const STORAGE_KEY = "nova.projects.v1";
+const STORAGE_KEY = "smart.projects.v1";
 
 function load(): Project[] {
   if (typeof window === "undefined") return seed;

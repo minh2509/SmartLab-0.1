@@ -24,8 +24,8 @@ import { ArrowLeft, Lock } from "lucide-react";
 export const Route = createFileRoute("/projects_/$slug")({
   head: ({ params }) => ({
     meta: [
-      { title: `${params.slug} — Nova Research Lab` },
-      { name: "description", content: `Public project page at Nova Research Lab.` },
+      { title: `${params.slug} — SmartResearch Lab` },
+      { name: "description", content: `Public project page at SmartResearch Lab.` },
     ],
   }),
   notFoundComponent: () => (

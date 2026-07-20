@@ -13,7 +13,7 @@ import {
 
 export const Route = createFileRoute("/app/posts_/$postId/edit")({
   head: () => ({
-    meta: [{ title: "Edit Post — Nova workspace" }, { name: "robots", content: "noindex" }],
+    meta: [{ title: "Edit Post — Smartworkspace" }, { name: "robots", content: "noindex" }],
   }),
   component: EditPostPage,
 });

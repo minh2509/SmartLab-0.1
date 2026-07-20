@@ -12,7 +12,7 @@ import { ExternalLink } from "lucide-react";
 
 export const Route = createFileRoute("/app/join-requests")({
   head: () => ({
-    meta: [{ title: "Join requests — Nova workspace" }, { name: "robots", content: "noindex" }],
+    meta: [{ title: "Join requests — Smartworkspace" }, { name: "robots", content: "noindex" }],
   }),
   component: JoinRequestsPage,
 });

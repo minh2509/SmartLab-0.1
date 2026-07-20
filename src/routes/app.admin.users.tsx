@@ -20,7 +20,7 @@ import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/app/admin/users")({
   head: () => ({
-    meta: [{ title: "User Management — Nova workspace" }, { name: "robots", content: "noindex" }],
+    meta: [{ title: "User Management — Smartworkspace" }, { name: "robots", content: "noindex" }],
   }),
   component: AdminUsersPage,
 });

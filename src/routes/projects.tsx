@@ -16,17 +16,17 @@ import { cn } from "@/lib/utils";
 export const Route = createFileRoute("/projects")({
   head: () => ({
     meta: [
-      { title: "Projects — Nova Research Lab" },
+      { title: "Projects — SmartResearch Lab" },
       {
         name: "description",
         content:
-          "Browse public research and production projects at Nova Research Lab across AI, Robotics, and Software Engineering.",
+          "Browse public research and production projects at SmartResearch Lab across AI, Robotics, and Software Engineering.",
       },
-      { property: "og:title", content: "Projects — Nova Research Lab" },
+      { property: "og:title", content: "Projects — SmartResearch Lab" },
       {
         property: "og:description",
         content:
-          "Live and completed projects from Nova Research Lab, with fields, status, and timelines.",
+          "Live and completed projects from SmartResearch Lab, with fields, status, and timelines.",
       },
     ],
   }),

@@ -36,13 +36,13 @@ export type UserActor = {
 
 type Result<T = UserAccount> = { ok: true; value: T } | { ok: false; error: string };
 
-const STORAGE_KEY = "nova.users.v1";
-const SESSION_STORAGE_KEY = "nova.session.v1";
+const STORAGE_KEY = "smart.users.v1";
+const SESSION_STORAGE_KEY = "smart.session.v1";
 const roles: Role[] = ["admin", "leader", "member"];
 const statuses: AccountStatus[] = ["active", "locked"];
 const seedCreatedAt = "2026-01-01T00:00:00.000Z";
 
-export const DEMO_PASSWORD = "nova2026";
+export const DEMO_PASSWORD = "smart2026";
 
 export const roleLabel: Record<Role, string> = {
   admin: "Admin",
@@ -53,7 +53,7 @@ export const roleLabel: Record<Role, string> = {
 export const seedUsers: UserAccount[] = [
   {
     id: "u_admin",
-    email: "admin@nova.lab",
+    email: "admin@smart.lab",
     fullName: "Alex Nguyen",
     initials: "AN",
     title: "Lab Administrator",
@@ -65,7 +65,7 @@ export const seedUsers: UserAccount[] = [
   },
   {
     id: "u_amara",
-    email: "amara@nova.lab",
+    email: "amara@smart.lab",
     fullName: "Amara Osei",
     initials: "AO",
     title: "Research Engineer · Program Lead",
@@ -77,7 +77,7 @@ export const seedUsers: UserAccount[] = [
   },
   {
     id: "u_tran",
-    email: "tran@nova.lab",
+    email: "tran@smart.lab",
     fullName: "Dr. Minh Tran",
     initials: "MT",
     title: "Principal Investigator · Atlas",
@@ -89,7 +89,7 @@ export const seedUsers: UserAccount[] = [
   },
   {
     id: "u_linh",
-    email: "linh@nova.lab",
+    email: "linh@smart.lab",
     fullName: "Linh Pham",
     initials: "LP",
     title: "PhD Researcher · Robotics",

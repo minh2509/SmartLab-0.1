@@ -24,7 +24,7 @@ export type CalendarEventDraft = Pick<
 type Result<T = LabCalendarEvent> = { ok: true; value: T } | { ok: false; error: string };
 type ActionResult = { ok: true } | { ok: false; error: string };
 
-const STORAGE_KEY = "nova.calendarEvents.v1";
+const STORAGE_KEY = "smart.calendarEvents.v1";
 const scopes: CalendarEventScope[] = ["lab", "project"];
 
 const seed: LabCalendarEvent[] = [

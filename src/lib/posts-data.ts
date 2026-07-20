@@ -31,7 +31,7 @@ export type PostDraft = Pick<LabPost, "title" | "excerpt" | "content" | "categor
 type Result<T = LabPost> = { ok: true; post: T } | { ok: false; error: string };
 type ActionResult = { ok: true } | { ok: false; error: string };
 
-const STORAGE_KEY = "nova.labPosts.v1";
+const STORAGE_KEY = "smart.labPosts.v1";
 const statuses: PostStatus[] = [
   "draft",
   "pending_review",
@@ -103,7 +103,7 @@ const legacyContent: Record<string, string> = {
   "helix-icse-2025":
     "Helix has been accepted to the ICSE 2025 Research Track. The paper studies retrieval-grounded program repair for large Java systems, with a focus on explaining why a patch is plausible before suggesting the change.\n\nThe accepted version includes a new defect localization benchmark and an ablation showing that project-specific context matters more than larger prompts alone. This is especially relevant for educational and enterprise codebases where style and architecture vary widely.\n\nThe team will release the evaluation harness after camera-ready review so other labs can reproduce the main experiments.",
   "phd-openings-2025":
-    "Nova Research Lab is opening two funded PhD positions for Fall 2025. One position will join Atlas, focusing on robust robot perception. The second will join Meridian, focusing on low-resource clinical NLP and evaluation.\n\nApplicants should have strong engineering fundamentals, a clear research interest, and comfort working in collaborative project teams. Prior publication experience is helpful but not required.\n\nApplications close May 30. Shortlisted candidates will be invited to a technical interview and a project-fit discussion with the relevant research group.",
+    "SmartResearch Lab is opening two funded PhD positions for Fall 2025. One position will join Atlas, focusing on robust robot perception. The second will join Meridian, focusing on low-resource clinical NLP and evaluation.\n\nApplicants should have strong engineering fundamentals, a clear research interest, and comfort working in collaborative project teams. Prior publication experience is helpful but not required.\n\nApplications close May 30. Shortlisted candidates will be invited to a technical interview and a project-fit discussion with the relevant research group.",
 };
 
 function legacySeed(): LabPost[] {
@@ -118,7 +118,7 @@ function legacySeed(): LabPost[] {
       excerpt: post.excerpt,
       content:
         legacyContent[post.slug] ??
-        `${post.excerpt}\n\nThis public update was migrated from the original Nova Lab homepage seed content.`,
+        `${post.excerpt}\n\nThis public update was migrated from the original SmartLab homepage seed content.`,
       category: legacyCategory(post.category),
       status: "published",
       createdAt: date,

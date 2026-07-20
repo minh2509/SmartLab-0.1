@@ -61,7 +61,7 @@ type TaskStore = {
 
 type Result<T = ProjectTask> = { ok: true; value: T } | { ok: false; error: string };
 
-const STORAGE_KEY = "nova.projectTasks.v1";
+const STORAGE_KEY = "smart.projectTasks.v1";
 const emptyStore: TaskStore = { tasks: [], assignments: [], submissions: [] };
 const priorities: TaskPriority[] = ["low", "medium", "high", "critical"];
 const taskStatuses: StoredTaskStatus[] = [

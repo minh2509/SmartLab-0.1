@@ -18,7 +18,7 @@ export function SiteFooter() {
           <ul className="mt-4 space-y-2 text-sm text-ink">
             <li>{lab.location}</li>
             <li>Founded {lab.founded}</li>
-            <li>contact@novaresearch.lab</li>
+            <li>contact@smartresearch.lab</li>
           </ul>
         </div>
         <div>

@@ -13,7 +13,7 @@ import {
 
 export const Route = createFileRoute("/posts")({
   head: () => ({
-    meta: [{ title: "Posts — Nova Research Lab" }],
+    meta: [{ title: "Posts — SmartResearch Lab" }],
   }),
   component: PublicPostsPage,
 });
@@ -30,7 +30,7 @@ function PublicPostsPage() {
             <SectionHeading
               eyebrow="Public posts"
               title="News, publications, and research stories"
-              description="Published updates from Nova Lab. Drafts, reviews, and revisions stay inside the member workspace."
+              description="Published updates from SmartLab. Drafts, reviews, and revisions stay inside the member workspace."
             />
           </div>
         </section>

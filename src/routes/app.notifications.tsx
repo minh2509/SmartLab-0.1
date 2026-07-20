@@ -13,7 +13,7 @@ import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/app/notifications")({
   head: () => ({
-    meta: [{ title: "Notifications — Nova workspace" }, { name: "robots", content: "noindex" }],
+    meta: [{ title: "Notifications — Smartworkspace" }, { name: "robots", content: "noindex" }],
   }),
   component: NotificationsPage,
 });

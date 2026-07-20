@@ -1,9 +1,9 @@
 export const lab = {
-  name: "Nova Research Lab",
-  shortName: "Nova Lab",
+  name: "SmartResearch Lab",
+  shortName: "SmartLab",
   tagline: "Intelligent systems for the physical world",
   intro:
-    "Nova is a university research lab working at the intersection of artificial intelligence, robotics, and software engineering. We build systems that reason, move, and scale — from perception models running on embedded robots to platforms that support scientific collaboration.",
+    "Smartis a university research lab working at the intersection of artificial intelligence, robotics, and software engineering. We build systems that reason, move, and scale — from perception models running on embedded robots to platforms that support scientific collaboration.",
   location: "Building E3 · Faculty of Information Technology",
   founded: 2017,
 };

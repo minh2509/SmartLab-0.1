@@ -39,7 +39,7 @@ export type NotificationInput = Pick<
 type Result<T = AppNotification> = { ok: true; value: T } | { ok: false; error: string };
 type ActionResult = { ok: true } | { ok: false; error: string };
 
-const STORAGE_KEY = "nova.notifications.v1";
+const STORAGE_KEY = "smart.notifications.v1";
 const EXPIRATION_DAYS = 30;
 const types: NotificationType[] = [
   "join_request_received",

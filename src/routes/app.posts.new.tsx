@@ -7,7 +7,7 @@ import { usePosts, type PostDraft } from "@/lib/posts-data";
 
 export const Route = createFileRoute("/app/posts/new")({
   head: () => ({
-    meta: [{ title: "New Post — Nova workspace" }, { name: "robots", content: "noindex" }],
+    meta: [{ title: "New Post — Smartworkspace" }, { name: "robots", content: "noindex" }],
   }),
   component: NewPostPage,
 });

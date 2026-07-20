@@ -18,7 +18,7 @@ import { ExternalLink, Play, Send } from "lucide-react";
 
 export const Route = createFileRoute("/app/tasks")({
   head: () => ({
-    meta: [{ title: "Tasks — Nova workspace" }, { name: "robots", content: "noindex" }],
+    meta: [{ title: "Tasks — Smartworkspace" }, { name: "robots", content: "noindex" }],
   }),
   component: TasksPage,
 });

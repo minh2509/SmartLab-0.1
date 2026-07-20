@@ -14,7 +14,7 @@ import {
 
 export const Route = createFileRoute("/app/posts")({
   head: () => ({
-    meta: [{ title: "My Posts — Nova workspace" }, { name: "robots", content: "noindex" }],
+    meta: [{ title: "My Posts — Smartworkspace" }, { name: "robots", content: "noindex" }],
   }),
   component: MemberPostsPage,
 });

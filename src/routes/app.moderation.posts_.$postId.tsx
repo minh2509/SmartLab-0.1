@@ -18,7 +18,7 @@ import { X } from "lucide-react";
 
 export const Route = createFileRoute("/app/moderation/posts_/$postId")({
   head: () => ({
-    meta: [{ title: "Review Post — Nova workspace" }, { name: "robots", content: "noindex" }],
+    meta: [{ title: "Review Post — Smartworkspace" }, { name: "robots", content: "noindex" }],
   }),
   component: PostModerationDetailPage,
 });

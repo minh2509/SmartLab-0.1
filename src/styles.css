@@ -5,14 +5,13 @@
 @custom-variant dark (&:is(.dark *));
 
 /*
- * Nova Research Lab — design system
+ * SmartResearch Lab — design system
  * Palette: deep navy, soft ivory-white, muted cyan/blue accents.
  * Typography: Instrument Serif (display) + Inter (text) + JetBrains Mono (mono).
  */
 
 @theme inline {
-  --font-sans:
-    "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-serif: "Instrument Serif", "Iowan Old Style", Georgia, serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 
@@ -185,7 +184,6 @@
 }
 
 @utility grid-lines {
-  background-image:
-    linear-gradient(to right, var(--hairline) 1px, transparent 1px);
+  background-image: linear-gradient(to right, var(--hairline) 1px, transparent 1px);
   background-size: 96px 100%;
 }
