@@ -1,0 +1,16 @@
+{
+  "name": "smartlab-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev:frontend": "npm --prefix frontend run dev -- --port 5173",
+    "dev:backend": "node scripts/backend.mjs dev",
+    "dev": "concurrently --kill-others-on-fail --names FRONTEND,BACKEND \"npm run dev:frontend\" \"npm run dev:backend\"",
+    "build:frontend": "npm --prefix frontend run build",
+    "build:backend": "node scripts/backend.mjs build",
+    "build": "npm run build:frontend && npm run build:backend"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.3"
+  }
+}
