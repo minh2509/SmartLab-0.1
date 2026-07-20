@@ -1,0 +1,20 @@
+spring:
+  application:
+    name: smartlab-backend
+
+server:
+  port: 8080
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: never
+
+info:
+  application:
+    name: SmartLab Backend
+    version: 0.0.1-SNAPSHOT

@@ -31,3 +31,7 @@ dist-ssr
 *.sln
 *.sw?
 node_modules/
+
+# Local environment variables
+.env
+.env.local
