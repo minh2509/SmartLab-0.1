@@ -96,3 +96,14 @@
 cd backend
 SPRING_PROFILES_ACTIVE=nodb ./mvnw clean test
 ```
+
+## DB-001: Review PostgreSQL Source Schema
+
+- Name: Review PostgreSQL source schema
+- Assignee: Minh
+- Status: `READY_FOR_REVIEW`
+- Progress: 100%
+- Branch: `chore/db-schema-review`
+- Test result: Not applicable; documentation review only
+- Scope: Schema review and migration planning only
+- Notes: Completed immutable-source review of `docs/database/lab-source.sql`; conclusion is `NEEDS_REVISION` before migration preparation.
