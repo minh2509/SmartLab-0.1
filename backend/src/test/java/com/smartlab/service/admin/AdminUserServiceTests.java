@@ -226,6 +226,28 @@ class AdminUserServiceTests {
 	}
 
 	@Test
+	void lockUnlockResetPasswordAndSoftDeleteUseExplicitLifecycleRules() {
+		UUID userId = UUID.randomUUID();
+		User user = user(userId, lab(UUID.randomUUID()), "minh", "minh@example.edu", UserAccountStatus.ACTIVE);
+		when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+		when(roleRepository.findByCode(AdminUserRoleService.SUPER_ADMIN_ROLE_CODE)).thenReturn(Optional.empty());
+
+		assertEquals(UserAccountStatus.LOCKED, service.lockUser(userId).accountStatus());
+		assertEquals(UserAccountStatus.ACTIVE, service.unlockUser(userId).accountStatus());
+		service.resetPassword(userId, "new-derived-password-hash");
+		assertEquals("new-derived-password-hash", user.getPasswordHash());
+
+		AdminUserService.ManagedUserSummary deleted = service.softDeleteUser(userId, null);
+
+		assertEquals(UserAccountStatus.DELETED, deleted.accountStatus());
+		assertNotNull(user.getDeletedAt());
+		verify(userRepository, never()).delete(any(User.class));
+		assertThrows(InvalidAdminServiceInputException.class, () -> service.lockUser(userId));
+		assertThrows(InvalidAdminServiceInputException.class, () -> service.unlockUser(userId));
+		assertThrows(InvalidAdminServiceInputException.class, () -> service.resetPassword(userId, " "));
+	}
+
+	@Test
 	void changeAccountStatusProtectsFinalActiveSuperAdminWhenEnforceable() {
 		UUID userId = UUID.randomUUID();
 		User user = user(userId, lab(UUID.randomUUID()), "root", "root@example.edu", UserAccountStatus.ACTIVE);
@@ -271,6 +293,10 @@ class AdminUserServiceTests {
 		assertTransactional("createManagedUser", AdminUserService.CreateManagedUserCommand.class, false);
 		assertTransactional("updateManagedUser", AdminUserService.UpdateManagedUserCommand.class, false);
 		assertTransactional("changeAccountStatus", UUID.class, UserAccountStatus.class, false);
+		assertTransactional("lockUser", UUID.class, false);
+		assertTransactional("unlockUser", UUID.class, false);
+		assertTransactional("resetPassword", new Class<?>[] {UUID.class, String.class}, false);
+		assertTransactional("softDeleteUser", new Class<?>[] {UUID.class, UUID.class}, false);
 		assertTransactional("findUserById", UUID.class, true);
 		assertFalse(AdminUserService.ManagedUserSummary.class.getName().toLowerCase().contains("password"));
 		assertFalse(Arrays.stream(AdminUserService.ManagedUserSummary.class.getRecordComponents())

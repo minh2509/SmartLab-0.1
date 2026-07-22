@@ -8,9 +8,11 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -146,7 +148,7 @@ class AdminUserControllerTests {
 		when(adminUserService.changeAccountStatus(userId, UserAccountStatus.LOCKED))
 				.thenReturn(userSummary(userId, labId, "newname", "new@example.edu", UserAccountStatus.LOCKED));
 
-		mockMvc.perform(patch("/api/admin/users/{userId}", userId)
+		mockMvc.perform(put("/api/admin/users/{userId}", userId)
 						.contentType(MediaType.APPLICATION_JSON)
 						.content("""
 								{
@@ -172,6 +174,61 @@ class AdminUserControllerTests {
 		verify(adminUserService).updateManagedUser(updateCaptor.capture());
 		assertEquals(userId, updateCaptor.getValue().userId());
 		assertEquals(avatarId, updateCaptor.getValue().avatarFileId());
+	}
+
+	@Test
+	void legacyPatchUpdateEndpointStillMapsToUpdateCommand() throws Exception {
+		UUID userId = UUID.randomUUID();
+		UUID labId = UUID.randomUUID();
+		when(adminUserService.updateManagedUser(any(AdminUserService.UpdateManagedUserCommand.class)))
+				.thenReturn(userSummary(userId, labId, "newname", "new@example.edu", UserAccountStatus.ACTIVE));
+
+		mockMvc.perform(patch("/api/admin/users/{userId}", userId)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "username": "newname",
+								  "email": "new@example.edu",
+								  "fullName": "New Name",
+								  "clearAvatarFile": false
+								}
+								"""))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.username").value("newname"));
+	}
+
+	@Test
+	void lockUnlockResetPasswordAndDeleteEndpointsMapToLifecycleServiceMethods() throws Exception {
+		UUID userId = UUID.randomUUID();
+		UUID labId = UUID.randomUUID();
+		when(adminUserService.lockUser(userId))
+				.thenReturn(userSummary(userId, labId, "minh", "minh@example.edu", UserAccountStatus.LOCKED));
+		when(adminUserService.unlockUser(userId))
+				.thenReturn(userSummary(userId, labId, "minh", "minh@example.edu", UserAccountStatus.ACTIVE));
+		when(adminUserService.resetPassword(userId, "new-derived-password-hash"))
+				.thenReturn(userSummary(userId, labId, "minh", "minh@example.edu", UserAccountStatus.ACTIVE));
+
+		mockMvc.perform(patch("/api/admin/users/{userId}/lock", userId))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.accountStatus").value("LOCKED"));
+		mockMvc.perform(patch("/api/admin/users/{userId}/unlock", userId))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.accountStatus").value("ACTIVE"));
+		mockMvc.perform(patch("/api/admin/users/{userId}/reset-password", userId)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{"passwordHash": "new-derived-password-hash"}
+								"""))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.passwordHash").doesNotExist())
+				.andExpect(content().string(not(containsString("new-derived-password-hash"))));
+		mockMvc.perform(delete("/api/admin/users/{userId}", userId))
+				.andExpect(status().isNoContent());
+
+		verify(adminUserService).lockUser(userId);
+		verify(adminUserService).unlockUser(userId);
+		verify(adminUserService).resetPassword(userId, "new-derived-password-hash");
+		verify(adminUserService).softDeleteUser(userId, null);
 	}
 
 	@Test

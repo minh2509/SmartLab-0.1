@@ -5,18 +5,23 @@ import java.util.List;
 import java.util.UUID;
 
 import org.springframework.context.annotation.Profile;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.smartlab.dto.request.admin.ChangeUserStatusRequest;
 import com.smartlab.dto.request.admin.CreateAdminUserRequest;
+import com.smartlab.dto.request.admin.ResetAdminUserPasswordRequest;
 import com.smartlab.dto.request.admin.UpdateAdminUserRequest;
 import com.smartlab.dto.response.admin.AdminUserResponse;
 import com.smartlab.enums.UserAccountStatus;
@@ -90,7 +95,7 @@ public class AdminUserController {
 		throw new InvalidAdminServiceInputException("At least one user filter must be provided.");
 	}
 
-	@PatchMapping("/{userId}")
+	@PutMapping("/{userId}")
 	public AdminUserResponse updateUser(
 			@PathVariable UUID userId,
 			@Valid @RequestBody UpdateAdminUserRequest request) {
@@ -104,10 +109,40 @@ public class AdminUserController {
 						request.clearAvatarFile())));
 	}
 
+	@PatchMapping("/{userId}")
+	public AdminUserResponse patchUser(
+			@PathVariable UUID userId,
+			@Valid @RequestBody UpdateAdminUserRequest request) {
+		return updateUser(userId, request);
+	}
+
 	@PatchMapping("/{userId}/status")
 	public AdminUserResponse changeUserStatus(
 			@PathVariable UUID userId,
 			@Valid @RequestBody ChangeUserStatusRequest request) {
 		return mapper.toUserResponse(adminUserService.changeAccountStatus(userId, request.status()));
+	}
+
+	@PatchMapping("/{userId}/lock")
+	public AdminUserResponse lockUser(@PathVariable UUID userId) {
+		return mapper.toUserResponse(adminUserService.lockUser(userId));
+	}
+
+	@PatchMapping("/{userId}/unlock")
+	public AdminUserResponse unlockUser(@PathVariable UUID userId) {
+		return mapper.toUserResponse(adminUserService.unlockUser(userId));
+	}
+
+	@PatchMapping("/{userId}/reset-password")
+	public AdminUserResponse resetPassword(
+			@PathVariable UUID userId,
+			@Valid @RequestBody ResetAdminUserPasswordRequest request) {
+		return mapper.toUserResponse(adminUserService.resetPassword(userId, request.passwordHash()));
+	}
+
+	@DeleteMapping("/{userId}")
+	@ResponseStatus(HttpStatus.NO_CONTENT)
+	public void softDeleteUser(@PathVariable UUID userId) {
+		adminUserService.softDeleteUser(userId, null);
 	}
 }

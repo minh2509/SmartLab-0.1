@@ -1,5 +1,6 @@
 package com.smartlab.service.admin;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
@@ -130,6 +131,44 @@ public class AdminUserService {
 			protectFinalActiveSuperAdminAccount(user);
 		}
 		user.setAccountStatus(status);
+		return ManagedUserSummary.from(user);
+	}
+
+	@Transactional
+	public ManagedUserSummary lockUser(UUID userId) {
+		if (findUser(userId).getAccountStatus() == UserAccountStatus.DELETED) {
+			throw new InvalidAdminServiceInputException("Deleted users cannot be locked.");
+		}
+		return changeAccountStatus(userId, UserAccountStatus.LOCKED);
+	}
+
+	@Transactional
+	public ManagedUserSummary unlockUser(UUID userId) {
+		if (findUser(userId).getAccountStatus() == UserAccountStatus.DELETED) {
+			throw new InvalidAdminServiceInputException("Deleted users cannot be unlocked.");
+		}
+		return changeAccountStatus(userId, UserAccountStatus.ACTIVE);
+	}
+
+	@Transactional
+	public ManagedUserSummary resetPassword(UUID userId, String passwordHash) {
+		User user = findUser(userId);
+		user.setPasswordHash(requireTrimmed(passwordHash, "Password hash"));
+		return ManagedUserSummary.from(user);
+	}
+
+	@Transactional
+	public ManagedUserSummary softDeleteUser(UUID userId, UUID deletedByUserId) {
+		User user = findUser(userId);
+		if (user.getAccountStatus() == UserAccountStatus.DELETED) {
+			return ManagedUserSummary.from(user);
+		}
+		protectFinalActiveSuperAdminAccount(user);
+		user.setAccountStatus(UserAccountStatus.DELETED);
+		user.setDeletedAt(OffsetDateTime.now());
+		if (deletedByUserId != null) {
+			user.setDeletedBy(findUser(deletedByUserId));
+		}
 		return ManagedUserSummary.from(user);
 	}
 
