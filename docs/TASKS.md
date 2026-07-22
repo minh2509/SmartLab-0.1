@@ -135,10 +135,20 @@ SPRING_PROFILES_ACTIVE=nodb ./mvnw clean test
 
 - Name: Implement Flyway V1-V4 core migrations
 - Assignee: Minh
-- Status: `READY_FOR_REVIEW`
+- Status: `DONE`
 - Progress: 100%
 - Branch: `feature/db-core-migrations`
 - Test result: `30 tests run, 0 failures, 0 errors, 0 skipped; Flyway V1-V4 applied successfully against an empty PostgreSQL 18.4 database`
 - Scope: PostgreSQL extension, core identity, file/profile/catalog tables, and delayed file foreign keys
-- Notes: Verified four successful Flyway migrations, 13 tables including `flyway_schema_history`, the `pgcrypto` extension, `set_updated_at()`, all three delayed file foreign keys, and `/actuator/health` returning HTTP 200.
+- Notes: PR #11 merged into `main`; verified four successful Flyway migrations, 13 tables including `flyway_schema_history`, `pgcrypto`, `set_updated_at()`, all three delayed file foreign keys, and actuator health.
 
+## DB-003C: Implement Flyway V5-V9 Feature Migrations
+
+- Name: Implement Flyway V5-V9 feature migrations
+- Assignee: Minh
+- Status: `READY_FOR_REVIEW`
+- Progress: 100%
+- Branch: `feature/db-feature-migrations`
+- Test result: `30 tests run, 0 failures, 0 errors, 0 skipped; Flyway V1-V9 applied successfully against an empty PostgreSQL 18.4 database`
+- Scope: Projects, membership, tasks, evaluations, content, notifications, audit, indexes, and stable reference seeds
+- Notes: Verified nine successful migrations, schema version v9, 30 tables, stable reference seeds, post moderation constraints, selected indexes, no deferred document/event tables, and `/actuator/health` returning HTTP 200.
