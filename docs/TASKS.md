@@ -129,7 +129,7 @@ SPRING_PROFILES_ACTIVE=nodb ./mvnw clean test
 - Branch: `chore/db-local-config`
 - Test result: `30 tests run, 0 failures, 0 errors, 0 skipped; local PostgreSQL connection and actuator health verified`
 - Scope: Spring datasource profile, environment example, and run documentation only
-- Notes: Added the local datasource profile and environment documentation; verified Hikari, Flyway, JPA, PostgreSQL 18.4, and `/actuator/health`.
+- Notes: PR #10 merged into `main`; local datasource, Hikari, Flyway, JPA, PostgreSQL 18.4, and `/actuator/health` were verified.
 - Notes: PR #10 was merged into `main`.
 - Notes: PR #10 merged into `main`; local datasource, Hikari, Flyway, JPA, and actuator health verified.
 
