@@ -257,9 +257,10 @@ SPRING_PROFILES_ACTIVE=nodb ./mvnw clean test
 
 - Name: Implement JWT access-token authentication API
 - Assignee: Minh
-- Status: `READY_FOR_REVIEW`
+- Status: `DONE`
 - Progress: 100%
 - Branch: `feature/minh-jwt-auth-api`
 - Test result: `158 tests run, 0 failures, 0 errors, 0 skipped; local PostgreSQL 18.4 application context, JWT bean graph, login API, current-user API, Bearer authentication, Admin role authorization, JSON 400/401/403 responses, HTTP Basic removal, stateless behavior, REST CSRF policy, and actuator health verified`
 - Scope: Login API, current-user API, HS256 JWT issuing and validation, Bearer authentication, role claims, JSON authentication failures, stateless security, `nodb` compatibility, and tests
+- Notes: PR #22 was merged into `main`.
 - Notes: Manual verification completed with temporary ADMIN and MEMBER accounts. Health returned HTTP 200; ADMIN and MEMBER login returned HTTP 200 with Bearer access tokens; ADMIN access to the Admin API returned HTTP 200; MEMBER access returned JSON HTTP 403; `/api/auth/me` returned the authenticated user; incorrect password, tampered token, and HTTP Basic authentication returned JSON HTTP 401; authenticated invalid POST returned JSON HTTP 400; no session cookie was created. Temporary users and lab were removed successfully. Refresh tokens, logout persistence, token revocation, CORS, login history, password reset, and frontend integration remain deferred.
