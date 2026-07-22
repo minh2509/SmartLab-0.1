@@ -124,9 +124,23 @@ SPRING_PROFILES_ACTIVE=nodb ./mvnw clean test
 
 - Name: Configure local PostgreSQL datasource
 - Assignee: Minh
-- Status: `READY_FOR_REVIEW`
+- Status: `DONE`
 - Progress: 100%
 - Branch: `chore/db-local-config`
 - Test result: `30 tests run, 0 failures, 0 errors, 0 skipped; local PostgreSQL connection and actuator health verified`
 - Scope: Spring datasource profile, environment example, and run documentation only
 - Notes: Added the local datasource profile and environment documentation; verified Hikari, Flyway, JPA, PostgreSQL 18.4, and `/actuator/health`.
+- Notes: PR #10 was merged into `main`.
+- Notes: PR #10 merged into `main`; local datasource, Hikari, Flyway, JPA, and actuator health verified.
+
+## DB-003B: Implement Flyway V1-V4 Core Migrations
+
+- Name: Implement Flyway V1-V4 core migrations
+- Assignee: Minh
+- Status: `READY_FOR_REVIEW`
+- Progress: 100%
+- Branch: `feature/db-core-migrations`
+- Test result:`30 tests run, 0 failures, 0 errors, 0 skipped; Flyway V1-V4 applied successfully against an empty PostgreSQL 18.4 database`
+- Scope: PostgreSQL extension, core identity, file/profile/catalog tables, and delayed file foreign keys
+- Notes: Verified four successful Flyway migrations, 13 tables including `flyway_schema_history`, the `pgcrypto` extension, `set_updated_at()`, all three delayed file foreign keys, and `/actuator/health` returning HTTP 200.
+
