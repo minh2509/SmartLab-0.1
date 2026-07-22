@@ -49,8 +49,6 @@ class SecurityStructuralTests {
 		assertFalse(allMainJava.contains("Jwt"));
 		assertFalse(allMainJava.contains("JWT"));
 		assertFalse(allMainJava.contains("/api/auth/login"));
-		assertFalse(allMainJava.contains("LoginHistoryRepository"));
-		assertFalse(allMainJava.contains("AuditLogRepository"));
 		assertFalse(allMainJava.contains("NotificationRepository"));
 		assertFalse(allMainJava.contains("setLastLoginAt"));
 	}

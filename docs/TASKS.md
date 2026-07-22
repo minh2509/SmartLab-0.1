@@ -251,3 +251,14 @@ SPRING_PROFILES_ACTIVE=nodb ./mvnw clean test
 - Test result: `144 tests run, 0 failures, 0 errors, 0 skipped; PostgreSQL 18.4 authentication, BCrypt compatibility, active role authorization, JSON 401/403, stateless behavior, REST CSRF policy, application startup, and actuator health verified`
 - Scope: Database-backed user authentication, BCrypt password verification, SmartLab principal, active role mapping, stateless HTTP Basic, REST CSRF policy, JSON 401/403, Admin authorization rules, nodb compatibility, and security tests
 - Notes: Manual verification completed with temporary ADMIN and MEMBER accounts. ADMIN access returned HTTP 200, MEMBER access returned JSON HTTP 403, incorrect credentials returned JSON HTTP 401, authenticated invalid POST returned JSON HTTP 400, no session cookie was created, and Spring Boot no longer generated a development password. JWT, login endpoints, refresh tokens, logout, CORS, login history, and frontend integration remain deferred.
+
+## ADM-024 to ADM-026: Implement Admin audit and login history read APIs
+
+- Name: Implement Admin audit and login history read APIs
+- Assignee: Tuấn Đạt
+- Status: `READY_FOR_REVIEW`
+- Progress: 100%
+- Branch: `main`
+- Test result: `164 tests run, 0 failures, 0 errors, 0 skipped; BUILD SUCCESS`
+- Scope: Read-only Admin audit-log and login-history REST APIs, DTO responses, service filtering/pagination, repository search queries, and controller/service tests
+- Notes: Implemented `GET /api/admin/audit-logs`, `GET /api/admin/login-histories`, and `GET /api/admin/users/{userId}/login-histories`. Login tracking hooks remain out of scope.
