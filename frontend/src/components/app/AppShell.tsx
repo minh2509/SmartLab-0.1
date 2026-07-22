@@ -197,16 +197,6 @@ export function AppShell() {
               );
             })}
           </nav>
-
-          <div className="mt-6 rounded-lg border border-hairline bg-surface-elev p-3">
-            <div className="text-[11px] uppercase tracking-[0.14em] text-ink-soft">
-              Signed in as
-            </div>
-
-            <div className="mt-1 truncate text-sm font-medium text-ink">{user.fullName}</div>
-
-            <div className="truncate text-xs text-ink-soft">{user.email}</div>
-          </div>
         </aside>
 
         {/* Main content area */}
