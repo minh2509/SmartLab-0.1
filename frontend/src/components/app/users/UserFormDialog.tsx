@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
-  DEMO_PASSWORD,
   getLeaderRoleRemovalBlock,
   roleLabel,
   type AccountStatus,
@@ -133,8 +132,8 @@ export function UserFormDialog({
 
         <div className="grid gap-4 p-5">
           <div className="rounded-lg border border-hairline bg-muted/30 p-3 text-xs leading-relaxed text-ink-soft">
-            Frontend demo account. Active users sign in with shared demo password{" "}
-            <span className="font-mono text-ink">{DEMO_PASSWORD}</span>.
+            This user-management screen currently stores demo feature data locally. Creating a user
+            here does not provision backend authentication credentials yet.
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">

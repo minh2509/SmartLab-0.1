@@ -6,6 +6,7 @@ export type AccountStatus = "active" | "locked";
 
 export type UserAccount = {
   id: string;
+  labId?: string;
   email: string;
   fullName: string;
   initials: string;
@@ -41,8 +42,6 @@ const SESSION_STORAGE_KEY = "smart.session.v1";
 const roles: Role[] = ["admin", "leader", "member"];
 const statuses: AccountStatus[] = ["active", "locked"];
 const seedCreatedAt = "2026-01-01T00:00:00.000Z";
-
-export const DEMO_PASSWORD = "smart2026";
 
 export const roleLabel: Record<Role, string> = {
   admin: "Admin",
