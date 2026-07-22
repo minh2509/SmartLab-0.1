@@ -212,9 +212,20 @@ SPRING_PROFILES_ACTIVE=nodb ./mvnw clean test
 
 - Name: Implement notification, audit, and login-history persistence
 - Assignee: Minh
-- Status: `READY_FOR_REVIEW`
+- Status: `DONE`
 - Progress: 100%
 - Branch: `feature/minh-notification-audit-persistence`
 - Test result: `98 tests run, 0 failures, 0 errors, 0 skipped; PostgreSQL schema validation, twenty-nine JPA repositories, application startup, and actuator health verified`
 - Scope: Notification, recipient, audit-log, and login-history entities, repositories, PostgreSQL JSON mappings, and mapping tests
-- Notes: Verified against PostgreSQL 18.4 with Flyway schema version 9; Hibernate validated the audit JSONB mappings, twenty-nine repository interfaces were detected, and `/actuator/health` returned HTTP 200.
+- Notes: PR #18 merged into `main`; PostgreSQL persistence verification, JSONB mapping validation, application startup, and actuator health checks completed successfully.
+
+## BE-007: Implement Admin user and role management service
+
+- Name: Implement Admin user and role management service
+- Assignee: Minh
+- Status: `READY_FOR_REVIEW`
+- Progress: 100%
+- Branch: `feature/minh-admin-user-role-service`
+- Test result: `114 tests run, 0 failures, 0 errors, 0 skipped; PostgreSQL schema validation, twenty-nine JPA repositories, service bean initialization, application startup, and actuator health verified`
+- Scope: Admin user lifecycle, account status, role assignment/revocation, lab-scope rules, protected administrator rules, repository support, and unit tests
+- Notes: Verified against PostgreSQL 18.4 with Flyway schema version 9; AdminUserService and AdminUserRoleService were initialized successfully, twenty-nine repository interfaces were detected, and `/actuator/health` returned HTTP 200.
