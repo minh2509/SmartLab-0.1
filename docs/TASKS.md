@@ -107,3 +107,14 @@ SPRING_PROFILES_ACTIVE=nodb ./mvnw clean test
 - Test result: Not applicable; documentation review only
 - Scope: Schema review and migration planning only
 - Notes: Completed immutable-source review of `docs/database/lab-source.sql`; conclusion is `NEEDS_REVISION` before migration preparation.
+
+## DB-002: Prepare PostgreSQL Migration Plan
+
+- Name: Prepare the PostgreSQL migration plan and schema cleanup specification
+- Assignee: Minh
+- Status: `READY_FOR_REVIEW`
+- Progress: 100%
+- Branch: `chore/db-migration-plan`
+- Test result: Not applicable; documentation planning only
+- Scope: Migration planning and schema cleanup specification only
+- Notes: Created `docs/database/DB-002-migration-plan.md` using approved owner decisions; no migration SQL files were created.
