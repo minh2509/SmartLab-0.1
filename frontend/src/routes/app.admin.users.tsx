@@ -12,6 +12,7 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 import { AccountStatusDialog } from "@/components/app/users/AccountStatusDialog";
 import { UserFormDialog } from "@/components/app/users/UserFormDialog";
 import { EmptyState, PageHeader, Panel, StatusPill } from "@/components/app/ui";
@@ -68,8 +69,6 @@ function AdminUsersPage() {
   const [saving, setSaving] = useState(false);
   const [statusPending, setStatusPending] = useState(false);
   const [confirmPending, setConfirmPending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
 
   const actor: UserActor | null = useMemo(
     () =>
@@ -90,6 +89,13 @@ function AdminUsersPage() {
     if (!actor || !isAdminRoute) return;
     void refresh(actor);
   }, [actor, isAdminRoute, refresh]);
+
+  useEffect(() => {
+    if (!loadError) return;
+    toast.error("Users could not be loaded", {
+      description: loadError,
+    });
+  }, [loadError]);
 
   const filtered = useMemo(
     () =>
@@ -131,8 +137,6 @@ function AdminUsersPage() {
   const saveUser = async (draft: UserDraft) => {
     if (saving) return;
     setSaving(true);
-    setError(null);
-    setSuccess(null);
     const result = editing
       ? await (async () => {
           const roleResult = await updateRoles(actor, editing.id, draft.roles, projects);
@@ -147,66 +151,79 @@ function AdminUsersPage() {
       : await create(actor, draft);
     setSaving(false);
     if (!result.ok) {
-      setError(result.error);
+      toast.error(editing ? "User update failed" : "User creation failed", {
+        description: result.error,
+      });
       return;
     }
     setCreating(false);
     setEditing(null);
-    setSuccess(editing ? "User account updated." : "User account created.");
+    toast.success(editing ? "User account updated" : "User account created", {
+      description: result.value.email,
+    });
   };
 
   const runStatusAction = async () => {
     if (!statusTarget || statusPending) return;
     setStatusPending(true);
-    setError(null);
-    setSuccess(null);
     const result =
       statusAction === "lock"
         ? await lock(actor, statusTarget.id)
         : await unlock(actor, statusTarget.id);
     setStatusPending(false);
     if (!result.ok) {
-      setError(result.error);
+      toast.error(statusAction === "lock" ? "Account lock failed" : "Account unlock failed", {
+        description: result.error,
+      });
       return;
     }
     if (statusAction === "lock") clearSessionIfUser(statusTarget.id);
-    setSuccess(statusAction === "lock" ? "Account locked." : "Account unlocked.");
+    toast.success(statusAction === "lock" ? "Account locked" : "Account unlocked", {
+      description: statusTarget.email,
+    });
     setStatusTarget(null);
   };
 
   const refreshUsers = async () => {
     if (loading) return;
-    setError(null);
-    setSuccess(null);
     const result = await refresh(actor);
-    if (!result.ok) setError(result.error);
-    else setSuccess(remoteEnabled ? "Backend users refreshed." : "Demo users refreshed.");
+    if (!result.ok) {
+      toast.error("Refresh failed", {
+        description: result.error,
+      });
+      return;
+    }
+    toast.success(remoteEnabled ? "Backend users refreshed" : "Demo users refreshed", {
+      description: `${result.value.length} users loaded.`,
+    });
   };
 
   const runConfirmAction = async () => {
     if (!confirmTarget || confirmPending) return;
     setConfirmPending(true);
-    setError(null);
-    setSuccess(null);
     const result =
       confirmAction === "reset-password"
         ? await resetPassword(actor, confirmTarget.id)
         : await deleteUser(actor, confirmTarget.id);
     setConfirmPending(false);
     if (!result.ok) {
-      setError(result.error);
+      toast.error(
+        confirmAction === "reset-password" ? "Password reset failed" : "User delete failed",
+        {
+          description: result.error,
+        },
+      );
       return;
     }
     if (confirmAction === "delete") clearSessionIfUser(confirmTarget.id);
-    setSuccess(
-      confirmAction === "reset-password"
-        ? "Demo password reset for this user."
-        : "User account deleted.",
+    toast.success(
+      confirmAction === "reset-password" ? "Demo password reset" : "User account deleted",
+      {
+        description: confirmTarget.email,
+      },
     );
     setConfirmTarget(null);
   };
-
-  const displayedError = error ?? loadError;
 
   return (
     <>
@@ -231,8 +248,6 @@ function AdminUsersPage() {
               onClick={() => {
                 setCreating(true);
                 setEditing(null);
-                setError(null);
-                setSuccess(null);
               }}
               className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90"
             >
@@ -241,22 +256,6 @@ function AdminUsersPage() {
           </div>
         }
       />
-
-      {loading ? (
-        <div className="mb-4 rounded-md border border-hairline bg-muted/40 px-3 py-2 text-xs text-ink-soft">
-          Loading users from {remoteEnabled ? "backend API" : "demo storage"}...
-        </div>
-      ) : null}
-      {displayedError ? (
-        <div className="mb-4 rounded-md border border-[color:var(--destructive)]/40 bg-[color-mix(in_oklab,var(--destructive)_10%,transparent)] px-3 py-2 text-xs text-[color:var(--destructive)]">
-          {displayedError}
-        </div>
-      ) : null}
-      {success ? (
-        <div className="mb-4 rounded-md border border-[color-mix(in_oklab,var(--emerald-ink)_35%,transparent)] bg-[color-mix(in_oklab,var(--emerald-ink)_10%,transparent)] px-3 py-2 text-xs text-[color:var(--emerald-ink)]">
-          {success}
-        </div>
-      ) : null}
 
       <div className="mb-6 grid gap-4 sm:grid-cols-3">
         <MiniStat label="Total users" value={users.length} />
@@ -369,7 +368,6 @@ function AdminUsersPage() {
                             onClick={() => {
                               setEditing(account);
                               setCreating(false);
-                              setError(null);
                             }}
                             title={editBlocked ?? "Edit user"}
                             className={cn(
@@ -386,7 +384,6 @@ function AdminUsersPage() {
                             onClick={() => {
                               setStatusTarget(account);
                               setStatusAction(account.status === "active" ? "lock" : "unlock");
-                              setError(null);
                             }}
                             title={statusBlocked ?? "Change account status"}
                             className={cn(
@@ -408,7 +405,6 @@ function AdminUsersPage() {
                             onClick={() => {
                               setConfirmTarget(account);
                               setConfirmAction("reset-password");
-                              setError(null);
                             }}
                             title={resetBlocked ?? "Reset demo password"}
                             className={cn(
@@ -425,7 +421,6 @@ function AdminUsersPage() {
                             onClick={() => {
                               setConfirmTarget(account);
                               setConfirmAction("delete");
-                              setError(null);
                             }}
                             title={deleteBlocked ?? "Delete user"}
                             className={cn(
@@ -456,12 +451,10 @@ function AdminUsersPage() {
         users={users}
         projects={projects}
         saving={saving}
-        error={error}
         onClose={() => {
           if (!saving) {
             setCreating(false);
             setEditing(null);
-            setError(null);
           }
         }}
         onSave={saveUser}
@@ -472,11 +465,9 @@ function AdminUsersPage() {
         action={statusAction}
         open={!!statusTarget}
         pending={statusPending}
-        error={error}
         onClose={() => {
           if (!statusPending) {
             setStatusTarget(null);
-            setError(null);
           }
         }}
         onConfirm={runStatusAction}
@@ -487,11 +478,9 @@ function AdminUsersPage() {
         action={confirmAction}
         open={!!confirmTarget}
         pending={confirmPending}
-        error={error}
         onClose={() => {
           if (!confirmPending) {
             setConfirmTarget(null);
-            setError(null);
           }
         }}
         onConfirm={runConfirmAction}
@@ -564,7 +553,6 @@ function ConfirmUserActionDialog({
   action,
   open,
   pending,
-  error,
   onClose,
   onConfirm,
 }: {
@@ -572,7 +560,6 @@ function ConfirmUserActionDialog({
   action: "reset-password" | "delete";
   open: boolean;
   pending: boolean;
-  error?: string | null;
   onClose: () => void;
   onConfirm: () => void;
 }) {
@@ -629,11 +616,6 @@ function ConfirmUserActionDialog({
               className="w-full rounded-md border border-hairline bg-background px-2.5 py-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-[color:var(--cyan)]/40"
             />
           </label>
-          {error ? (
-            <div className="rounded-md border border-[color:var(--destructive)]/40 bg-[color-mix(in_oklab,var(--destructive)_10%,transparent)] px-3 py-2 text-xs text-[color:var(--destructive)]">
-              {error}
-            </div>
-          ) : null}
         </div>
 
         <footer className="flex items-center justify-end gap-2 border-t border-hairline px-5 py-4">

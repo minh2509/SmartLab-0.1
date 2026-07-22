@@ -28,13 +28,14 @@ type BackendRoleCatalogResponse = {
 };
 
 type BackendUserRoleResponse = {
-  assignmentId: string;
-  roleId: string;
+  assignmentId?: string;
+  id?: string;
+  roleId?: string;
   code?: string;
   roleCode?: string;
   name?: string;
   roleName?: string;
-  status: "ACTIVE" | "INACTIVE";
+  status?: "ACTIVE" | "INACTIVE";
 };
 
 type RequestOptions = {
@@ -115,7 +116,7 @@ export async function updateAdminUser(
   const updated = await request<unknown>(
     `/api/admin/users/${encodeURIComponent(userId)}`,
     {
-      method: "PATCH",
+      method: "PUT",
       body: {
         username: current.username ?? makeUsername(patch.email),
         email: patch.email,
@@ -247,7 +248,9 @@ async function fetchBackendRolesForUser(userId: string, actor?: UserActor) {
     {},
     actor,
   );
-  return response.filter(isBackendUserRoleResponse).filter((role) => role.status === "ACTIVE");
+  return response
+    .filter(isBackendUserRoleResponse)
+    .filter((role) => !role.status || role.status === "ACTIVE");
 }
 
 async function fetchBackendRoleCodesForUser(userId: string, actor?: UserActor) {
@@ -407,11 +410,9 @@ function isBackendRoleCatalogResponse(value: unknown): value is BackendRoleCatal
 function isBackendUserRoleResponse(value: unknown): value is BackendUserRoleResponse {
   if (!isRecord(value)) return false;
   const status = readString(value.status).toUpperCase();
-  return (
-    !!readString(value.roleId) &&
-    (!!readString(value.code) || !!readString(value.roleCode)) &&
-    (status === "ACTIVE" || status === "INACTIVE")
-  );
+  const hasRoleId = !!readString(value.roleId) || !!readString(value.id);
+  const hasRoleCode = !!readString(value.code) || !!readString(value.roleCode);
+  return hasRoleId && hasRoleCode && (!status || status === "ACTIVE" || status === "INACTIVE");
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

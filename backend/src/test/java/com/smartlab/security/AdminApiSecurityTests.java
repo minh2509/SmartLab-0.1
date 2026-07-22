@@ -5,11 +5,13 @@ import static org.hamcrest.Matchers.not;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.httpBasic;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.cookie;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -73,6 +75,19 @@ class AdminApiSecurityTests {
 				.andExpect(jsonPath("$.openapi").value("3.1.0"));
 		mockMvc.perform(get("/swagger-ui/index.html"))
 				.andExpect(status().isOk());
+	}
+
+	@Test
+	void localFrontendPreflightForAdminApiIsPublic() throws Exception {
+		mockMvc.perform(options("/api/admin/probe")
+						.header("Origin", "http://localhost:5173")
+						.header("Access-Control-Request-Method", "GET")
+						.header("Access-Control-Request-Headers", "authorization,content-type"))
+				.andExpect(status().isOk())
+				.andExpect(header().string("Access-Control-Allow-Origin", "http://localhost:5173"))
+				.andExpect(header().string("Access-Control-Allow-Credentials", "true"))
+				.andExpect(header().string("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS"))
+				.andExpect(header().string("Access-Control-Allow-Headers", "Authorization,Content-Type,Accept"));
 	}
 
 	@Test

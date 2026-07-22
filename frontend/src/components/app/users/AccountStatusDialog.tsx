@@ -7,7 +7,6 @@ export function AccountStatusDialog({
   action,
   open,
   pending,
-  error,
   onClose,
   onConfirm,
 }: {
@@ -15,7 +14,6 @@ export function AccountStatusDialog({
   action: "lock" | "unlock";
   open: boolean;
   pending: boolean;
-  error?: string | null;
   onClose: () => void;
   onConfirm: () => void;
 }) {
@@ -71,11 +69,6 @@ export function AccountStatusDialog({
               className="w-full rounded-md border border-hairline bg-background px-2.5 py-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-[color:var(--cyan)]/40"
             />
           </label>
-          {error ? (
-            <div className="rounded-md border border-[color:var(--destructive)]/40 bg-[color-mix(in_oklab,var(--destructive)_10%,transparent)] px-3 py-2 text-xs text-[color:var(--destructive)]">
-              {error}
-            </div>
-          ) : null}
         </div>
 
         <footer className="flex items-center justify-end gap-2 border-t border-hairline px-5 py-4">

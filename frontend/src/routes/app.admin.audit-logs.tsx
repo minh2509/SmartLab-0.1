@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { ChevronLeft, ChevronRight, RefreshCw, RotateCcw, Search, ShieldCheck } from "lucide-react";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
+import { toast } from "sonner";
 import { EmptyState, PageHeader, Panel, StatusPill } from "@/components/app/ui";
 import {
   compactIdentifier,
@@ -50,6 +51,7 @@ function AdminAuditLogsPage() {
   const [data, setData] = useState<AdminPageResponse<AdminAuditLogResponse> | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const refreshToastId = useRef<ReturnType<typeof toast.loading> | null>(null);
 
   const isAdminRoute = !!user && activeRole === "admin" && user.roles.includes("admin");
 
@@ -71,11 +73,27 @@ function AdminAuditLogsPage() {
       },
       controller.signal,
     )
-      .then(setData)
+      .then((nextData) => {
+        setData(nextData);
+        if (refreshToastId.current) {
+          toast.success("Audit logs refreshed", {
+            id: refreshToastId.current,
+            description: `${nextData.content.length} records shown.`,
+          });
+          refreshToastId.current = null;
+        }
+      })
       .catch((reason: unknown) => {
         if (reason instanceof DOMException && reason.name === "AbortError") return;
+        const message =
+          reason instanceof Error ? reason.message : "Audit logs could not be loaded.";
         setData(null);
-        setError(reason instanceof Error ? reason.message : "Audit logs could not be loaded.");
+        setError(message);
+        toast.error("Audit logs could not be loaded", {
+          id: refreshToastId.current ?? undefined,
+          description: message,
+        });
+        refreshToastId.current = null;
       })
       .finally(() => {
         if (!controller.signal.aborted) setLoading(false);
@@ -101,17 +119,35 @@ function AdminAuditLogsPage() {
 
   const rows = data?.content ?? [];
   const hasFilters = Object.values(filters).some(Boolean);
+  const dateRangeError =
+    draft.startDate && draft.endDate && draft.startDate > draft.endDate
+      ? "End date must be on or after start date."
+      : undefined;
 
   const applyFilters = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (dateRangeError) {
+      toast.error("Date range invalid", {
+        description: dateRangeError,
+      });
+      return;
+    }
     setPage(0);
     setFilters({ ...draft });
+    toast.info("Audit filters applied");
   };
 
   const clearFilters = () => {
     setDraft(emptyFilters);
     setFilters(emptyFilters);
     setPage(0);
+    toast.info("Audit filters cleared");
+  };
+
+  const refreshRecords = () => {
+    if (loading) return;
+    refreshToastId.current = toast.loading("Refreshing audit logs");
+    setRefreshKey((value) => value + 1);
   };
 
   return (
@@ -129,7 +165,7 @@ function AdminAuditLogsPage() {
               Login history
             </a>
             <button
-              onClick={() => setRefreshKey((value) => value + 1)}
+              onClick={refreshRecords}
               className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90"
             >
               <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} /> Refresh
@@ -137,14 +173,6 @@ function AdminAuditLogsPage() {
           </div>
         }
       />
-
-      {error ? (
-        <div className="mb-4 rounded-md border border-[color:var(--destructive)]/40 bg-[color-mix(in_oklab,var(--destructive)_10%,transparent)] px-3 py-2 text-xs text-[color:var(--destructive)]">
-          {error}
-        </div>
-      ) : null}
-
-      <AuthNotice />
 
       <div className="mb-6 grid gap-4 sm:grid-cols-3">
         <MiniStat label="Total records" value={data?.totalElements ?? 0} />
@@ -186,6 +214,7 @@ function AdminAuditLogsPage() {
           <DateFilter
             label="End"
             value={draft.endDate}
+            error={dateRangeError}
             onChange={(endDate) => setDraft((current) => ({ ...current, endDate }))}
           />
           <div className="flex flex-wrap items-end gap-2 lg:col-span-6">
@@ -302,16 +331,6 @@ function AdminAuditLogsPage() {
   );
 }
 
-function AuthNotice() {
-  return (
-    <div className="mb-4 rounded-md border border-hairline bg-muted/35 px-3 py-2 text-xs text-ink-soft">
-      This frontend uses the current local demo Admin session and shared demo password for backend
-      HTTP Basic Auth. Frontend-only users or changed backend passwords can still be rejected by the
-      backend.
-    </div>
-  );
-}
-
 function TextFilter({
   label,
   value,
@@ -339,10 +358,12 @@ function TextFilter({
 function DateFilter({
   label,
   value,
+  error,
   onChange,
 }: {
   label: string;
   value: string;
+  error?: string;
   onChange: (value: string) => void;
 }) {
   return (
@@ -354,6 +375,9 @@ function DateFilter({
         onChange={(event) => onChange(event.target.value)}
         className="mt-1 w-full rounded-md border border-hairline bg-background px-2.5 py-1.5 text-xs text-ink focus:outline-none focus:ring-2 focus:ring-[color:var(--cyan)]/40"
       />
+      {error ? (
+        <span className="mt-1 block text-xs text-[color:var(--destructive)]">{error}</span>
+      ) : null}
     </label>
   );
 }

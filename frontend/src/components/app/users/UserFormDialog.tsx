@@ -45,7 +45,6 @@ export function UserFormDialog({
   users,
   projects,
   saving,
-  error,
   onClose,
   onSave,
 }: {
@@ -56,7 +55,6 @@ export function UserFormDialog({
   users: UserAccount[];
   projects: Project[];
   saving: boolean;
-  error?: string | null;
   onClose: () => void;
   onSave: (draft: UserDraft) => void;
 }) {
@@ -210,11 +208,6 @@ export function UserFormDialog({
           {errors.policy ? (
             <div className="rounded-md border border-[color:var(--destructive)]/40 bg-[color-mix(in_oklab,var(--destructive)_10%,transparent)] px-3 py-2 text-xs text-[color:var(--destructive)]">
               {errors.policy}
-            </div>
-          ) : null}
-          {error ? (
-            <div className="rounded-md border border-[color:var(--destructive)]/40 bg-[color-mix(in_oklab,var(--destructive)_10%,transparent)] px-3 py-2 text-xs text-[color:var(--destructive)]">
-              {error}
             </div>
           ) : null}
         </div>

@@ -4,7 +4,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -21,6 +20,7 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -50,13 +50,8 @@ class AdminAuditLogServiceTests {
 		UUID actorId = UUID.randomUUID();
 		UUID entityId = UUID.randomUUID();
 		AuditLog auditLog = auditLog(labId, actorId, entityId);
-		when(auditLogRepository.searchAdminAuditLogs(
-				any(),
-				any(),
-				any(),
-				any(),
-				any(),
-				any(),
+		when(auditLogRepository.findAll(
+				any(Specification.class),
 				any(Pageable.class)))
 				.thenReturn(new PageImpl<>(List.of(auditLog), PageRequest.of(2, 5), 6));
 
@@ -75,13 +70,8 @@ class AdminAuditLogServiceTests {
 		assertEquals("admin@example.edu", result.getContent().getFirst().actorEmail());
 		assertEquals(labId, result.getContent().getFirst().labId());
 		ArgumentCaptor<Pageable> pageableCaptor = ArgumentCaptor.forClass(Pageable.class);
-		verify(auditLogRepository).searchAdminAuditLogs(
-				eq("CREATE_USER"),
-				eq(actorId),
-				eq("USER"),
-				eq(entityId),
-				eq(OffsetDateTime.parse("2026-07-22T00:00:00Z")),
-				eq(OffsetDateTime.parse("2026-07-23T00:00:00Z")),
+		verify(auditLogRepository).findAll(
+				any(Specification.class),
 				pageableCaptor.capture());
 		assertEquals(2, pageableCaptor.getValue().getPageNumber());
 		assertEquals(5, pageableCaptor.getValue().getPageSize());
@@ -93,12 +83,8 @@ class AdminAuditLogServiceTests {
 		UUID userId = UUID.randomUUID();
 		LoginHistory loginHistory = loginHistory(userId);
 		when(userRepository.existsById(userId)).thenReturn(true);
-		when(loginHistoryRepository.searchAdminLoginHistories(
-				any(),
-				any(),
-				any(),
-				any(),
-				any(),
+		when(loginHistoryRepository.findAll(
+				any(Specification.class),
 				any(Pageable.class)))
 				.thenReturn(new PageImpl<>(List.of(loginHistory)));
 
@@ -115,12 +101,8 @@ class AdminAuditLogServiceTests {
 
 		assertEquals(userId, result.getContent().getFirst().userId());
 		verify(userRepository).existsById(userId);
-		verify(loginHistoryRepository).searchAdminLoginHistories(
-				eq(userId),
-				eq(false),
-				eq("192.0.2.10"),
-				eq(null),
-				eq(null),
+		verify(loginHistoryRepository).findAll(
+				any(Specification.class),
 				any(Pageable.class));
 	}
 
@@ -133,7 +115,7 @@ class AdminAuditLogServiceTests {
 				ResourceNotFoundException.class,
 				() -> service.listLoginHistoriesForUser(userId, AdminAuditLogService.LoginHistoryFilter.empty()));
 
-		verify(loginHistoryRepository, never()).searchAdminLoginHistories(any(), any(), any(), any(), any(), any());
+		verify(loginHistoryRepository, never()).findAll(any(Specification.class), any(Pageable.class));
 	}
 
 	@Test

@@ -11,7 +11,9 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 
 import com.smartlab.entity.AuditLog;
 import com.smartlab.entity.Lab;
@@ -75,15 +77,11 @@ class NotificationAuditRepositoryTests {
 		assertReturnType(
 				AuditLogRepository.class.getMethod("findByCreatedAtBetween", OffsetDateTime.class, OffsetDateTime.class),
 				List.class);
+		assertTrue(JpaSpecificationExecutor.class.isAssignableFrom(AuditLogRepository.class));
 		assertReturnType(
 				AuditLogRepository.class.getMethod(
-						"searchAdminAuditLogs",
-						String.class,
-						UUID.class,
-						String.class,
-						UUID.class,
-						OffsetDateTime.class,
-						OffsetDateTime.class,
+						"findAll",
+						Specification.class,
 						Pageable.class),
 				Page.class);
 	}
@@ -97,14 +95,11 @@ class NotificationAuditRepositoryTests {
 				LoginHistoryRepository.class.getMethod("findByLoginAtBetween", OffsetDateTime.class, OffsetDateTime.class),
 				List.class);
 		assertReturnType(LoginHistoryRepository.class.getMethod("findByIpAddress", String.class), List.class);
+		assertTrue(JpaSpecificationExecutor.class.isAssignableFrom(LoginHistoryRepository.class));
 		assertReturnType(
 				LoginHistoryRepository.class.getMethod(
-						"searchAdminLoginHistories",
-						UUID.class,
-						Boolean.class,
-						String.class,
-						OffsetDateTime.class,
-						OffsetDateTime.class,
+						"findAll",
+						Specification.class,
 						Pageable.class),
 				Page.class);
 	}

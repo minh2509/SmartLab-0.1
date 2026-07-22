@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { ChevronLeft, ChevronRight, RefreshCw, RotateCcw, Search, ShieldCheck } from "lucide-react";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
+import { toast } from "sonner";
 import { EmptyState, PageHeader, Panel, StatusPill } from "@/components/app/ui";
 import {
   compactIdentifier,
@@ -53,6 +54,7 @@ function AdminLoginHistoriesPage() {
   const [data, setData] = useState<AdminPageResponse<AdminLoginHistoryResponse> | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const refreshToastId = useRef<ReturnType<typeof toast.loading> | null>(null);
 
   const isAdminRoute = !!user && activeRole === "admin" && user.roles.includes("admin");
 
@@ -83,11 +85,27 @@ function AdminLoginHistoriesPage() {
         : fetchAdminLoginHistories({ ...query, userId: filters.userId }, controller.signal);
 
     request
-      .then(setData)
+      .then((nextData) => {
+        setData(nextData);
+        if (refreshToastId.current) {
+          toast.success("Login history refreshed", {
+            id: refreshToastId.current,
+            description: `${nextData.content.length} records shown.`,
+          });
+          refreshToastId.current = null;
+        }
+      })
       .catch((reason: unknown) => {
         if (reason instanceof DOMException && reason.name === "AbortError") return;
+        const message =
+          reason instanceof Error ? reason.message : "Login histories could not be loaded.";
         setData(null);
-        setError(reason instanceof Error ? reason.message : "Login histories could not be loaded.");
+        setError(message);
+        toast.error("Login histories could not be loaded", {
+          id: refreshToastId.current ?? undefined,
+          description: message,
+        });
+        refreshToastId.current = null;
       })
       .finally(() => {
         if (!controller.signal.aborted) setLoading(false);
@@ -116,17 +134,45 @@ function AdminLoginHistoriesPage() {
   const hasFilters = Object.entries(filters).some(
     ([key, value]) => key !== "scope" && value !== "" && value !== "all",
   );
+  const userIdError =
+    draft.scope === "user" && !draft.userId.trim()
+      ? "User ID is required for user-specific login history."
+      : undefined;
+  const dateRangeError =
+    draft.startDate && draft.endDate && draft.startDate > draft.endDate
+      ? "End date must be on or after start date."
+      : undefined;
 
   const applyFilters = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (userIdError) {
+      toast.error("User ID required", {
+        description: userIdError,
+      });
+      return;
+    }
+    if (dateRangeError) {
+      toast.error("Date range invalid", {
+        description: dateRangeError,
+      });
+      return;
+    }
     setPage(0);
     setFilters({ ...draft });
+    toast.info("Login-history filters applied");
   };
 
   const clearFilters = () => {
     setDraft(emptyFilters);
     setFilters(emptyFilters);
     setPage(0);
+    toast.info("Login-history filters cleared");
+  };
+
+  const refreshRecords = () => {
+    if (loading || waitingForUserId) return;
+    refreshToastId.current = toast.loading("Refreshing login history");
+    setRefreshKey((value) => value + 1);
   };
 
   const successCount = rows.filter((row) => row.success === true).length;
@@ -147,7 +193,7 @@ function AdminLoginHistoriesPage() {
               Audit logs
             </a>
             <button
-              onClick={() => setRefreshKey((value) => value + 1)}
+              onClick={refreshRecords}
               className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90"
             >
               <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} /> Refresh
@@ -155,14 +201,6 @@ function AdminLoginHistoriesPage() {
           </div>
         }
       />
-
-      {error ? (
-        <div className="mb-4 rounded-md border border-[color:var(--destructive)]/40 bg-[color-mix(in_oklab,var(--destructive)_10%,transparent)] px-3 py-2 text-xs text-[color:var(--destructive)]">
-          {error}
-        </div>
-      ) : null}
-
-      <AuthNotice />
 
       <div className="mb-6 grid gap-4 sm:grid-cols-3">
         <MiniStat label="Total records" value={data?.totalElements ?? 0} />
@@ -207,6 +245,7 @@ function AdminLoginHistoriesPage() {
             label="User ID"
             value={draft.userId}
             placeholder={draft.scope === "user" ? "Required UUID" : "Optional UUID"}
+            error={userIdError}
             onChange={(userId) => setDraft((current) => ({ ...current, userId }))}
           />
           <label className="block text-xs">
@@ -240,6 +279,7 @@ function AdminLoginHistoriesPage() {
           <DateFilter
             label="End"
             value={draft.endDate}
+            error={dateRangeError}
             onChange={(endDate) => setDraft((current) => ({ ...current, endDate }))}
           />
           <div className="flex flex-wrap items-end gap-2">
@@ -361,24 +401,17 @@ function AdminLoginHistoriesPage() {
   );
 }
 
-function AuthNotice() {
-  return (
-    <div className="mb-4 rounded-md border border-hairline bg-muted/35 px-3 py-2 text-xs text-ink-soft">
-      This frontend uses the current local demo Admin session and shared demo password for backend
-      HTTP Basic Auth. Backend records may not exist until database-backed login tracking is wired.
-    </div>
-  );
-}
-
 function TextFilter({
   label,
   value,
   placeholder,
+  error,
   onChange,
 }: {
   label: string;
   value: string;
   placeholder: string;
+  error?: string;
   onChange: (value: string) => void;
 }) {
   return (
@@ -390,6 +423,9 @@ function TextFilter({
         placeholder={placeholder}
         className="mt-1 w-full rounded-md border border-hairline bg-background px-2.5 py-1.5 text-xs text-ink placeholder:text-ink-soft focus:outline-none focus:ring-2 focus:ring-[color:var(--cyan)]/40"
       />
+      {error ? (
+        <span className="mt-1 block text-xs text-[color:var(--destructive)]">{error}</span>
+      ) : null}
     </label>
   );
 }
@@ -397,10 +433,12 @@ function TextFilter({
 function DateFilter({
   label,
   value,
+  error,
   onChange,
 }: {
   label: string;
   value: string;
+  error?: string;
   onChange: (value: string) => void;
 }) {
   return (
@@ -412,6 +450,9 @@ function DateFilter({
         onChange={(event) => onChange(event.target.value)}
         className="mt-1 w-full rounded-md border border-hairline bg-background px-2.5 py-1.5 text-xs text-ink focus:outline-none focus:ring-2 focus:ring-[color:var(--cyan)]/40"
       />
+      {error ? (
+        <span className="mt-1 block text-xs text-[color:var(--destructive)]">{error}</span>
+      ) : null}
     </label>
   );
 }
