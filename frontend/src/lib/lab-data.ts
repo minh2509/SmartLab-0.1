@@ -107,7 +107,7 @@ export const culture = [
     body: "Undergraduates shadow ongoing projects and pair with senior researchers on small, shippable experiments.",
   },
   {
-    title: "Field trips & demo days",
+    title: "Field trips & showcase days",
     body: "Twice a semester we take active prototypes into the wild: hospitals, warehouses, and partner campuses.",
   },
 ];
@@ -138,9 +138,9 @@ export const researchFields = [
 
 export const activities = [
   {
-    title: "Spring demo day at Building E3",
+    title: "Spring showcase day at Building E3",
     date: "Mar 14, 2025",
-    kind: "Demo day",
+    kind: "Showcase day",
     blurb:
       "Six teams presented live prototypes — from tactile grippers to a retrieval-grounded code reviewer — to 120+ students and faculty.",
   },

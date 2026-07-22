@@ -1,4 +1,4 @@
-import { DEMO_PASSWORD, getUserById } from "@/lib/users-data";
+import { backendRequest, getApiBaseUrl } from "@/lib/backend-api";
 
 export type AdminPageResponse<T> = {
   content: T[];
@@ -65,31 +65,12 @@ export class AdminAuditApiError extends Error {
   }
 }
 
-const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
-const sessionStorageKey = "smart.session.v1";
-
-function readDemoBasicAuthHeader() {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = localStorage.getItem(sessionStorageKey);
-    if (!raw) return null;
-    const parsed: unknown = JSON.parse(raw);
-    if (!isRecord(parsed)) return null;
-    const userId = readString(parsed.userId) || readString(parsed.id);
-    const activeRole = readString(parsed.activeRole);
-    const user = userId ? getUserById(userId) : null;
-    if (!user || user.status !== "active") return null;
-    if (activeRole !== "admin" || !user.roles.includes("admin")) return null;
-    return `Basic ${window.btoa(`${user.email}:${DEMO_PASSWORD}`)}`;
-  } catch {
-    return null;
-  }
-}
-
 function buildAdminUrl(
   path: string,
   params: Record<string, string | number | boolean | undefined>,
 ) {
+  const apiBaseUrl = getApiBaseUrl();
+  if (!apiBaseUrl) throw new AdminAuditApiError("VITE_API_BASE_URL is not configured.");
   const origin = typeof window === "undefined" ? "http://localhost" : window.location.origin;
   const url = new URL(`${apiBaseUrl}${path}`, origin);
   Object.entries(params).forEach(([key, value]) => {
@@ -105,50 +86,19 @@ async function requestAdminPage<T>(
   params: Record<string, string | number | boolean | undefined>,
   signal?: AbortSignal,
 ) {
-  const authorization = readDemoBasicAuthHeader();
-  if (!authorization) {
-    throw new AdminAuditApiError(
-      "No local demo Admin session is available for HTTP Basic authentication.",
-      null,
-    );
-  }
-
-  const response = await fetch(buildAdminUrl(path, params), {
-    headers: {
-      Accept: "application/json",
-      Authorization: authorization,
-    },
-    signal,
-  });
-
-  if (!response.ok) {
-    throw new AdminAuditApiError(await readErrorMessage(response), response.status);
-  }
-
-  return (await response.json()) as AdminPageResponse<T>;
-}
-
-async function readErrorMessage(response: Response) {
   try {
-    const body: unknown = await response.json();
-    if (isRecord(body)) {
-      const detail = readString(body.message) || readString(body.error) || readString(body.detail);
-      if (detail) return detail;
-    }
-  } catch {
-    // Fall back to the HTTP status line below.
+    return await backendRequest<AdminPageResponse<T>>(urlPathWithParams(path, params), { signal });
+  } catch (error) {
+    throw new AdminAuditApiError(error instanceof Error ? error.message : "Request failed.");
   }
-  if (response.status === 401) return "Backend rejected the demo Basic Auth credentials.";
-  if (response.status === 403) return "Backend reports that this account is not authorized.";
-  return `Request failed with HTTP ${response.status}.`;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-function readString(value: unknown) {
-  return typeof value === "string" ? value : "";
+function urlPathWithParams(
+  path: string,
+  params: Record<string, string | number | boolean | undefined>,
+) {
+  const url = buildAdminUrl(path, params);
+  return `${url.pathname}${url.search}`;
 }
 
 export function fetchAdminAuditLogs(query: AdminAuditLogQuery, signal?: AbortSignal) {

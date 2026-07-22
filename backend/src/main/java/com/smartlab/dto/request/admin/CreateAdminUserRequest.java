@@ -11,7 +11,7 @@ public record CreateAdminUserRequest(
 		@NotNull UUID labId,
 		@NotBlank @Size(max = 100) String username,
 		@NotBlank @Email @Size(max = 255) String email,
-		@NotBlank @Size(max = 255) String passwordHash,
+		@NotBlank @Size(min = 8, max = 255) String password,
 		@NotBlank @Size(max = 255) String fullName,
 		UUID avatarFileId) {
 }

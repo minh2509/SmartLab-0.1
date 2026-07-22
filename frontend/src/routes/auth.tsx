@@ -1,15 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { DEMO_PASSWORD, roleLabel, useAuth } from "@/lib/auth";
-import { useUsers } from "@/lib/users-data";
+import { useAuth } from "@/lib/auth";
 import { cn } from "@/lib/utils";
-
-const DEMO_ACCOUNT_EMAILS = [
-  "admin@smart.lab",
-  "amara@smart.lab",
-  "tran@smart.lab",
-  "linh@smart.lab",
-] as const;
 
 export const Route = createFileRoute("/auth")({
   head: () => ({
@@ -27,19 +19,12 @@ export const Route = createFileRoute("/auth")({
 
 function AuthPage() {
   const { user, ready, signIn } = useAuth();
-  const { users } = useUsers();
   const navigate = useNavigate();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
-
-  const demoAccounts = DEMO_ACCOUNT_EMAILS.flatMap((demoEmail) => {
-    const account = users.find((candidate) => candidate.email.toLowerCase() === demoEmail);
-
-    return account ? [account] : [];
-  });
 
   useEffect(() => {
     if (ready && user) {
@@ -68,12 +53,6 @@ function AuthPage() {
     } finally {
       setPending(false);
     }
-  }
-
-  function selectDemoAccount(accountEmail: string) {
-    setEmail(accountEmail);
-    setPassword(DEMO_PASSWORD);
-    setError(null);
   }
 
   const disabled = pending || !email.trim() || !password.trim();
@@ -120,7 +99,7 @@ function AuthPage() {
               <h1 className="mt-2 font-display text-3xl text-ink">Enter the workspace</h1>
 
               <p className="mt-2 text-sm text-ink-soft">
-                Use your lab-issued credentials. Access is scoped by role. n{" "}
+                Use your lab-issued credentials. Access is scoped by role.
               </p>
             </div>
 
@@ -177,59 +156,6 @@ function AuthPage() {
                 {pending ? "Signing in…" : "Sign in"}
               </button>
             </form>
-
-            <div className="mt-10">
-              <div className="mb-3 flex items-center gap-2 text-[11px] uppercase tracking-[0.14em] text-ink-soft">
-                <span className="h-px flex-1 bg-hairline" />
-                Demo accounts
-                <span className="h-px flex-1 bg-hairline" />
-              </div>
-
-              {demoAccounts.length > 0 ? (
-                <div className="flex flex-col gap-2">
-                  {demoAccounts.map((account) => (
-                    <button
-                      key={account.id}
-                      type="button"
-                      onClick={() => selectDemoAccount(account.email)}
-                      className="group flex items-center justify-between gap-3 rounded-md border border-hairline bg-surface-elev px-3 py-2 text-left transition-colors hover:border-ink/20"
-                    >
-                      <div className="min-w-0">
-                        <div className="truncate text-sm text-ink">{account.fullName}</div>
-
-                        <div className="truncate text-[11px] text-ink-soft">{account.email}</div>
-                      </div>
-
-                      <div className="flex shrink-0 flex-wrap justify-end gap-1">
-                        {account.roles.map((role) => (
-                          <span
-                            key={role}
-                            className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-ink-soft"
-                          >
-                            {roleLabel[role]}
-                          </span>
-                        ))}
-
-                        {account.status === "locked" ? (
-                          <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-ink-soft">
-                            Locked
-                          </span>
-                        ) : null}
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              ) : (
-                <div className="rounded-md border border-dashed border-hairline bg-surface-elev px-3 py-4 text-center text-xs text-ink-soft">
-                  Demo accounts are currently unavailable. Enter an account email manually.
-                </div>
-              )}
-
-              <p className="mt-3 text-[11px] text-ink-soft">
-                Frontend demo only. Password for every active demo account:{" "}
-                <span className="font-mono">{DEMO_PASSWORD}</span>
-              </p>
-            </div>
 
             <div className="mt-8 text-xs text-ink-soft">
               <Link to="/" className="hover:text-ink">

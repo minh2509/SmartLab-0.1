@@ -52,7 +52,7 @@ public class AdminUserController {
 						request.labId(),
 						request.username(),
 						request.email(),
-						request.passwordHash(),
+						request.password(),
 						request.fullName(),
 						request.avatarFileId()));
 		return ResponseEntity
@@ -137,7 +137,7 @@ public class AdminUserController {
 	public AdminUserResponse resetPassword(
 			@PathVariable UUID userId,
 			@Valid @RequestBody ResetAdminUserPasswordRequest request) {
-		return mapper.toUserResponse(adminUserService.resetPassword(userId, request.passwordHash()));
+		return mapper.toUserResponse(adminUserService.resetPassword(userId, request.password()));
 	}
 
 	@DeleteMapping("/{userId}")

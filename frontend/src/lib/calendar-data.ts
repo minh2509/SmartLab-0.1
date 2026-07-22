@@ -69,11 +69,11 @@ const seed: LabCalendarEvent[] = [
     updatedAt: "2026-07-05T13:10:00.000+07:00",
   },
   {
-    id: "cal_lab_demo_retro_2026_07",
+    id: "cal_lab_showcase_retro_2026_07",
     scope: "lab",
-    title: "Demo day retrospective",
+    title: "Showcase retrospective",
     description:
-      "Short retrospective on demo flow, visitor questions, and follow-up documentation.",
+      "Short retrospective on showcase flow, visitor questions, and follow-up documentation.",
     location: "Online",
     startAt: "2026-07-03T16:00:00.000+07:00",
     endAt: "2026-07-03T17:00:00.000+07:00",

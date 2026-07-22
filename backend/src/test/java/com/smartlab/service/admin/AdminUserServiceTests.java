@@ -19,6 +19,7 @@ import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -46,12 +47,14 @@ class AdminUserServiceTests {
 	private final FileRepository fileRepository = mock(FileRepository.class);
 	private final RoleRepository roleRepository = mock(RoleRepository.class);
 	private final UserRoleRepository userRoleRepository = mock(UserRoleRepository.class);
+	private final PasswordEncoder passwordEncoder = mock(PasswordEncoder.class);
 	private final AdminUserService service = new AdminUserService(
 			userRepository,
 			labRepository,
 			fileRepository,
 			roleRepository,
-			userRoleRepository);
+			userRoleRepository,
+			passwordEncoder);
 
 	@Test
 	void createManagedUserNormalizesEmailAndDoesNotAssignRoleImplicitly() {
@@ -60,6 +63,7 @@ class AdminUserServiceTests {
 		when(labRepository.findById(labId)).thenReturn(Optional.of(lab));
 		when(userRepository.existsByLabAndEmail(lab, "minh@example.edu")).thenReturn(false);
 		when(userRepository.existsByLabAndUsername(lab, "minh")).thenReturn(false);
+		when(passwordEncoder.encode("temporary-password")).thenReturn("encoded-temporary-password");
 		when(userRepository.save(any(User.class))).thenAnswer(invocation -> {
 			User user = invocation.getArgument(0);
 			user.setId(UUID.randomUUID());
@@ -71,7 +75,7 @@ class AdminUserServiceTests {
 						labId,
 						"minh",
 						"  Minh@Example.EDU ",
-						"derived-password-hash",
+						"temporary-password",
 						"Minh Hoang",
 						null));
 
@@ -79,13 +83,14 @@ class AdminUserServiceTests {
 		assertEquals(UserAccountStatus.ACTIVE, created.accountStatus());
 		ArgumentCaptor<User> userCaptor = ArgumentCaptor.forClass(User.class);
 		verify(userRepository).save(userCaptor.capture());
-		assertEquals("derived-password-hash", userCaptor.getValue().getPasswordHash());
+		assertEquals("encoded-temporary-password", userCaptor.getValue().getPasswordHash());
 		assertEquals("minh@example.edu", userCaptor.getValue().getEmail());
+		verify(passwordEncoder).encode("temporary-password");
 		verify(userRoleRepository, never()).save(any());
 	}
 
 	@Test
-	void createManagedUserRejectsDuplicateEmailMissingLabBlankRequiredFieldsAndBlankHash() {
+	void createManagedUserRejectsDuplicateEmailMissingLabBlankRequiredFieldsAndBlankPassword() {
 		UUID labId = UUID.randomUUID();
 		Lab lab = lab(labId);
 		when(labRepository.findById(labId)).thenReturn(Optional.of(lab));
@@ -97,7 +102,7 @@ class AdminUserServiceTests {
 						labId,
 						"dupe",
 						"dupe@example.edu",
-						"hash",
+						"password123",
 						"Duplicate User",
 						null)));
 		assertThrows(
@@ -106,7 +111,7 @@ class AdminUserServiceTests {
 						UUID.randomUUID(),
 						"missing",
 						"missing@example.edu",
-						"hash",
+						"password123",
 						"Missing Lab",
 						null)));
 		assertThrows(
@@ -115,7 +120,7 @@ class AdminUserServiceTests {
 						labId,
 						" ",
 						"blank@example.edu",
-						"hash",
+						"password123",
 						"Blank User",
 						null)));
 		assertThrows(
@@ -231,11 +236,12 @@ class AdminUserServiceTests {
 		User user = user(userId, lab(UUID.randomUUID()), "minh", "minh@example.edu", UserAccountStatus.ACTIVE);
 		when(userRepository.findById(userId)).thenReturn(Optional.of(user));
 		when(roleRepository.findByCode(AdminUserRoleService.SUPER_ADMIN_ROLE_CODE)).thenReturn(Optional.empty());
+		when(passwordEncoder.encode("new-temporary-password")).thenReturn("encoded-new-temporary-password");
 
 		assertEquals(UserAccountStatus.LOCKED, service.lockUser(userId).accountStatus());
 		assertEquals(UserAccountStatus.ACTIVE, service.unlockUser(userId).accountStatus());
-		service.resetPassword(userId, "new-derived-password-hash");
-		assertEquals("new-derived-password-hash", user.getPasswordHash());
+		service.resetPassword(userId, "new-temporary-password");
+		assertEquals("encoded-new-temporary-password", user.getPasswordHash());
 
 		AdminUserService.ManagedUserSummary deleted = service.softDeleteUser(userId, null);
 
@@ -302,9 +308,9 @@ class AdminUserServiceTests {
 		assertFalse(Arrays.stream(AdminUserService.ManagedUserSummary.class.getRecordComponents())
 				.anyMatch(component -> component.getName().toLowerCase().contains("password")));
 		assertTrue(Arrays.stream(AdminUserService.CreateManagedUserCommand.class.getRecordComponents())
-				.anyMatch(component -> component.getName().equals("passwordHash")));
+				.anyMatch(component -> component.getName().equals("password")));
 		assertFalse(Arrays.stream(AdminUserService.CreateManagedUserCommand.class.getRecordComponents())
-				.anyMatch(component -> component.getName().equals("password")
+				.anyMatch(component -> component.getName().equals("passwordHash")
 						|| component.getName().toLowerCase().contains("plaintext")));
 		assertFalse(Arrays.stream(AdminUserService.UpdateManagedUserCommand.class.getRecordComponents())
 				.anyMatch(component -> component.getName().toLowerCase().contains("password")));

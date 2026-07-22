@@ -7,6 +7,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.context.annotation.Profile;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -36,18 +37,21 @@ public class AdminUserService {
 	private final FileRepository fileRepository;
 	private final RoleRepository roleRepository;
 	private final UserRoleRepository userRoleRepository;
+	private final PasswordEncoder passwordEncoder;
 
 	public AdminUserService(
 			UserRepository userRepository,
 			LabRepository labRepository,
 			FileRepository fileRepository,
 			RoleRepository roleRepository,
-			UserRoleRepository userRoleRepository) {
+			UserRoleRepository userRoleRepository,
+			PasswordEncoder passwordEncoder) {
 		this.userRepository = userRepository;
 		this.labRepository = labRepository;
 		this.fileRepository = fileRepository;
 		this.roleRepository = roleRepository;
 		this.userRoleRepository = userRoleRepository;
+		this.passwordEncoder = passwordEncoder;
 	}
 
 	@Transactional
@@ -59,7 +63,7 @@ public class AdminUserService {
 		Lab lab = findLab(command.labId());
 		String username = requireTrimmed(command.username(), "Username");
 		String email = normalizeRequiredEmail(command.email());
-		String passwordHash = requireTrimmed(command.passwordHash(), "Password hash");
+		String password = requireTrimmed(command.password(), "Password");
 		String fullName = requireTrimmed(command.fullName(), "Full name");
 		if (userRepository.existsByLabAndEmail(lab, email)) {
 			throw new DuplicateUserEmailException("User email already exists in the lab.");
@@ -72,7 +76,7 @@ public class AdminUserService {
 		user.setLab(lab);
 		user.setUsername(username);
 		user.setEmail(email);
-		user.setPasswordHash(passwordHash);
+		user.setPasswordHash(passwordEncoder.encode(password));
 		user.setFullName(fullName);
 		user.setAccountStatus(UserAccountStatus.ACTIVE);
 		if (command.avatarFileId() != null) {
@@ -151,9 +155,9 @@ public class AdminUserService {
 	}
 
 	@Transactional
-	public ManagedUserSummary resetPassword(UUID userId, String passwordHash) {
+	public ManagedUserSummary resetPassword(UUID userId, String password) {
 		User user = findUser(userId);
-		user.setPasswordHash(requireTrimmed(passwordHash, "Password hash"));
+		user.setPasswordHash(passwordEncoder.encode(requireTrimmed(password, "Password")));
 		return ManagedUserSummary.from(user);
 	}
 
@@ -268,7 +272,7 @@ public class AdminUserService {
 			UUID labId,
 			String username,
 			String email,
-			String passwordHash,
+			String password,
 			String fullName,
 			UUID avatarFileId) {
 	}

@@ -41,7 +41,7 @@ export function DeletePostDialog({
             <h2 className="text-sm font-semibold text-ink">Permanently delete post</h2>
             <p className="mt-1 text-xs leading-relaxed text-ink-soft">
               This removes <span className="font-medium text-ink">{post.title}</span> from the local
-              post store. This action cannot be undone in the demo workspace.
+              post store. This action cannot be undone in the workspace.
             </p>
           </div>
         </div>

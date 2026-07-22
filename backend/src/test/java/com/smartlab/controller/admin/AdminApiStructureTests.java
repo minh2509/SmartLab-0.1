@@ -37,8 +37,8 @@ class AdminApiStructureTests {
 
 	@Test
 	void requestAndResponseDtosDoNotExposePlaintextPasswordsOrPasswordHashesInResponses() {
-		assertTrue(hasRecordComponent(CreateAdminUserRequest.class, "passwordHash"));
-		assertFalse(hasRecordComponent(CreateAdminUserRequest.class, "password"));
+		assertTrue(hasRecordComponent(CreateAdminUserRequest.class, "password"));
+		assertFalse(hasRecordComponent(CreateAdminUserRequest.class, "passwordHash"));
 		assertFalse(hasRecordComponent(UpdateAdminUserRequest.class, "password"));
 		assertNoCredentialComponent(AdminUserResponse.class);
 		assertNoCredentialComponent(AdminRoleResponse.class);

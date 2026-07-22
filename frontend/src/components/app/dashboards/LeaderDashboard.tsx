@@ -77,7 +77,7 @@ export function LeaderDashboard() {
       </div>
 
       <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <Panel title="Upcoming activities" description="Talks, demos and field trips">
+        <Panel title="Upcoming activities" description="Talks, showcases and field trips">
           <ul className="divide-y divide-hairline">
             {activities.slice(0, 3).map((a) => (
               <li

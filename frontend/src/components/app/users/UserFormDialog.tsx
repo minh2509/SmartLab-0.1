@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
-  DEMO_PASSWORD,
   getLeaderRoleRemovalBlock,
   roleLabel,
   type AccountStatus,
@@ -23,6 +22,7 @@ function emptyDraft(actor: UserActor): UserDraft {
     title: "",
     roles: actor.isMainAdmin ? ["member"] : ["member"],
     status: "active",
+    password: "",
   };
 }
 
@@ -34,6 +34,7 @@ function toDraft(user: UserAccount | null, actor: UserActor): UserDraft {
     title: user.title,
     roles: user.roles,
     status: user.status,
+    password: "",
   };
 }
 
@@ -88,7 +89,7 @@ export function UserFormDialog({
 
   const submit = (event: React.FormEvent) => {
     event.preventDefault();
-    setTouched({ fullName: true, email: true, roles: true });
+    setTouched({ fullName: true, email: true, roles: true, password: true });
     if (!valid || saving) return;
     onSave({
       fullName: form.fullName.trim(),
@@ -96,6 +97,7 @@ export function UserFormDialog({
       title: form.title.trim(),
       roles: Array.from(new Set(form.roles)),
       status: form.status,
+      password: form.password.trim(),
     });
   };
 
@@ -130,11 +132,6 @@ export function UserFormDialog({
         </header>
 
         <div className="grid gap-4 p-5">
-          <div className="rounded-lg border border-hairline bg-muted/30 p-3 text-xs leading-relaxed text-ink-soft">
-            Frontend demo account. Active users sign in with shared demo password{" "}
-            <span className="font-mono text-ink">{DEMO_PASSWORD}</span>.
-          </div>
-
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Full name" error={touched.fullName ? errors.fullName : undefined}>
               <input
@@ -205,6 +202,22 @@ export function UserFormDialog({
             </select>
           </Field>
 
+          {mode === "create" ? (
+            <Field
+              label="Temporary password"
+              error={touched.password ? errors.password : undefined}
+            >
+              <input
+                className="user-input"
+                type="password"
+                autoComplete="new-password"
+                value={form.password}
+                onBlur={() => setTouched((current) => ({ ...current, password: true }))}
+                onChange={(event) => setForm({ ...form, password: event.target.value })}
+              />
+            </Field>
+          ) : null}
+
           {errors.policy ? (
             <div className="rounded-md border border-[color:var(--destructive)]/40 bg-[color-mix(in_oklab,var(--destructive)_10%,transparent)] px-3 py-2 text-xs text-[color:var(--destructive)]">
               {errors.policy}
@@ -261,6 +274,9 @@ function validate(
   else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errors.email = "Email is invalid.";
   else if (users.some((user) => user.id !== editing?.id && user.email === email)) {
     errors.email = "Email already exists.";
+  }
+  if (!editing && form.password.trim().length < 8) {
+    errors.password = "Temporary password must be at least 8 characters.";
   }
   if (form.roles.length === 0) errors.roles = "At least one role is required.";
   if (!actor.isMainAdmin && form.roles.includes("admin")) {

@@ -57,7 +57,7 @@ export function AccountStatusDialog({
           <p className="text-sm leading-relaxed text-ink-soft">
             {action === "lock"
               ? "The user will no longer be able to sign in. Existing project assignments, posts, tasks, evaluations, calendar events, and historical records remain unchanged."
-              : "The user will be able to sign in again with the shared frontend demo password. Historical records are not modified."}
+              : "The user will be able to sign in again with their backend credentials. Historical records are not modified."}
           </p>
           <label className="block">
             <div className="mb-1 text-[11px] uppercase tracking-[0.14em] text-ink-soft">

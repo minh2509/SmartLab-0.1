@@ -87,7 +87,7 @@ function AdminUsersPage() {
 
   useEffect(() => {
     if (!actor || !isAdminRoute) return;
-    void refresh(actor);
+    void refresh();
   }, [actor, isAdminRoute, refresh]);
 
   useEffect(() => {
@@ -186,24 +186,24 @@ function AdminUsersPage() {
 
   const refreshUsers = async () => {
     if (loading) return;
-    const result = await refresh(actor);
+    const result = await refresh();
     if (!result.ok) {
       toast.error("Refresh failed", {
         description: result.error,
       });
       return;
     }
-    toast.success(remoteEnabled ? "Backend users refreshed" : "Demo users refreshed", {
+    toast.success(remoteEnabled ? "Backend users refreshed" : "Backend is not configured", {
       description: `${result.value.length} users loaded.`,
     });
   };
 
-  const runConfirmAction = async () => {
+  const runConfirmAction = async (confirmPassword = "") => {
     if (!confirmTarget || confirmPending) return;
     setConfirmPending(true);
     const result =
       confirmAction === "reset-password"
-        ? await resetPassword(actor, confirmTarget.id)
+        ? await resetPassword(actor, confirmTarget.id, confirmPassword)
         : await deleteUser(actor, confirmTarget.id);
     setConfirmPending(false);
     if (!result.ok) {
@@ -216,12 +216,9 @@ function AdminUsersPage() {
       return;
     }
     if (confirmAction === "delete") clearSessionIfUser(confirmTarget.id);
-    toast.success(
-      confirmAction === "reset-password" ? "Demo password reset" : "User account deleted",
-      {
-        description: confirmTarget.email,
-      },
-    );
+    toast.success(confirmAction === "reset-password" ? "Password reset" : "User account deleted", {
+      description: confirmTarget.email,
+    });
     setConfirmTarget(null);
   };
 
@@ -233,7 +230,7 @@ function AdminUsersPage() {
         description={
           remoteEnabled
             ? "Manage backend lab accounts, role assignments, password resets, and account status."
-            : "Manage frontend-demo lab accounts, role assignments, and account lock status."
+            : "Connect VITE_API_BASE_URL to manage database-backed lab accounts."
         }
         action={
           <div className="flex flex-wrap items-center gap-2">
@@ -265,7 +262,7 @@ function AdminUsersPage() {
 
       <Panel
         title="Accounts"
-        description={`${filtered.length} shown${remoteEnabled ? " - Backend API" : ""}`}
+        description={`${filtered.length} shown from database`}
         action={
           <div className="flex flex-wrap items-center gap-2">
             <div className="relative">
@@ -406,7 +403,7 @@ function AdminUsersPage() {
                               setConfirmTarget(account);
                               setConfirmAction("reset-password");
                             }}
-                            title={resetBlocked ?? "Reset demo password"}
+                            title={resetBlocked ?? "Reset password"}
                             className={cn(
                               "inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs",
                               resetBlocked
@@ -561,15 +558,20 @@ function ConfirmUserActionDialog({
   open: boolean;
   pending: boolean;
   onClose: () => void;
-  onConfirm: () => void;
+  onConfirm: (temporaryPassword: string) => void;
 }) {
   const [confirmation, setConfirmation] = useState("");
-  useEffect(() => setConfirmation(""), [user?.id, action, open]);
+  const [temporaryPassword, setTemporaryPassword] = useState("");
+  useEffect(() => {
+    setConfirmation("");
+    setTemporaryPassword("");
+  }, [user?.id, action, open]);
   if (!open || !user) return null;
 
   const destructive = action === "delete";
   const phrase = destructive ? "DELETE USER" : "RESET PASSWORD";
-  const valid = confirmation.trim() === phrase;
+  const valid =
+    confirmation.trim() === phrase && (destructive || temporaryPassword.trim().length >= 8);
 
   return (
     <div
@@ -603,9 +605,27 @@ function ConfirmUserActionDialog({
         <div className="space-y-4 p-5">
           <p className="text-sm leading-relaxed text-ink-soft">
             {destructive
-              ? "This soft-deletes the backend account or removes the local demo account from the active user list."
-              : "This restores the shared demo password for the backend account. Local demo accounts already use the shared password."}
+              ? "This soft-deletes the backend account. Existing audit records remain available."
+              : "This sets a new temporary backend password for the account."}
           </p>
+          {!destructive ? (
+            <label className="block">
+              <div className="mb-1 text-[11px] uppercase tracking-[0.14em] text-ink-soft">
+                New temporary password
+              </div>
+              <input
+                type="password"
+                value={temporaryPassword}
+                onChange={(event) => setTemporaryPassword(event.target.value)}
+                className="w-full rounded-md border border-hairline bg-background px-2.5 py-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-[color:var(--cyan)]/40"
+              />
+              {temporaryPassword && temporaryPassword.trim().length < 8 ? (
+                <div className="mt-1 text-xs text-[color:var(--destructive)]">
+                  Temporary password must be at least 8 characters.
+                </div>
+              ) : null}
+            </label>
+          ) : null}
           <label className="block">
             <div className="mb-1 text-[11px] uppercase tracking-[0.14em] text-ink-soft">
               Type {phrase}
@@ -630,7 +650,7 @@ function ConfirmUserActionDialog({
           <button
             type="button"
             disabled={!valid || pending}
-            onClick={onConfirm}
+            onClick={() => onConfirm(temporaryPassword.trim())}
             className={cn(
               "rounded-md px-3.5 py-1.5 text-sm font-medium transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40",
               destructive

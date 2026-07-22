@@ -84,7 +84,7 @@ function AppProjectsIndex() {
               onClick={() => setResetOpen(true)}
               className="inline-flex items-center gap-1.5 rounded-md border border-hairline bg-surface-elev px-3 py-1.5 text-xs text-ink-soft hover:text-ink"
             >
-              <RotateCcw className="h-3.5 w-3.5" /> Reset demo data
+              <RotateCcw className="h-3.5 w-3.5" /> Reset sample data
             </button>
           ) : undefined
         }
@@ -319,7 +319,7 @@ function ResetProjectsDialog({
         <header className="flex items-start justify-between gap-4 border-b border-hairline px-5 py-4">
           <div>
             <div className="text-[11px] uppercase tracking-[0.14em] text-ink-soft">
-              Reset demo projects
+              Reset sample projects
             </div>
             <h2 className="mt-0.5 text-sm font-semibold text-ink">Restore project seed data</h2>
           </div>
@@ -334,8 +334,8 @@ function ResetProjectsDialog({
         </header>
         <div className="space-y-4 p-5">
           <p className="text-sm leading-relaxed text-ink-soft">
-            This resets the project catalogue only. Related demo records in other modules remain in
-            localStorage.
+            This resets the project catalogue only. Related sample records in other modules remain
+            in localStorage.
           </p>
           <label className="block">
             <div className="mb-1 text-[11px] uppercase tracking-[0.14em] text-ink-soft">

@@ -19,7 +19,7 @@ import {
 } from "@/lib/posts-data";
 
 const activityTone: Record<string, "cyan" | "emerald" | "violet" | "amber"> = {
-  "Demo day": "cyan",
+  "Showcase day": "cyan",
   "Field trip": "emerald",
   Talk: "violet",
   Workshop: "amber",
@@ -195,11 +195,11 @@ function Index() {
           <SectionHeading
             eyebrow="Inside the lab"
             title="Recent activity & highlights"
-            description="Demo days, field studies, invited talks, and the weekly rituals that keep the lab curious across cohorts."
+            description="Showcase days, field studies, invited talks, and the weekly rituals that keep the lab curious across cohorts."
           />
           {activities.length === 0 ? (
             <div className="mt-12 rounded-xl border border-dashed border-hairline p-10 text-center text-sm text-ink-soft">
-              No public activity has been posted yet. Check back after the next demo day.
+              No public activity has been posted yet. Check back after the next showcase day.
             </div>
           ) : (
             <div className="mt-12 grid gap-4 md:grid-cols-2">

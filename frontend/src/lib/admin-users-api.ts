@@ -1,11 +1,12 @@
-import type {
-  AccountStatus,
-  Role,
-  UserAccount,
-  UserActor,
-  UserDraft,
-  UserUpdate,
-} from "@/lib/users-data";
+import type { AccountStatus, Role, UserAccount, UserDraft, UserUpdate } from "@/lib/users-data";
+import {
+  backendRequest,
+  isBackendConfigured,
+  makeInitials,
+  mapFrontendRole,
+  mapRoleCodes,
+  normalizeBackendRoleCode,
+} from "@/lib/backend-api";
 
 type BackendAccountStatus = "ACTIVE" | "LOCKED" | "PENDING" | "DELETED";
 type BackendRoleCode = "SUPER_ADMIN" | "ADMIN" | "LEADER" | "MEMBER";
@@ -48,100 +49,75 @@ type RoleCatalogItem = {
   code: BackendRoleCode;
 };
 
-const DEMO_PASSWORD = "smart2026";
-const DEMO_PASSWORD_HASH = "$2a$10$d7kQAwLf4KgqyRAueDTGc.gmv2ubaO6PidzJzDvMO8p3IfRjQi.wC";
-
 let roleCatalogCache: RoleCatalogItem[] | null = null;
 
 export function isAdminUsersApiConfigured() {
-  return getApiBaseUrl() !== null;
+  return isBackendConfigured();
 }
 
-export async function fetchAdminUsers(actor?: UserActor): Promise<UserAccount[]> {
+export async function fetchAdminUsers(): Promise<UserAccount[]> {
   const [activeUsers, lockedUsers] = await Promise.all([
-    request<unknown[]>("/api/admin/users?status=ACTIVE", {}, actor),
-    request<unknown[]>("/api/admin/users?status=LOCKED", {}, actor),
+    request<unknown[]>("/api/admin/users?status=ACTIVE"),
+    request<unknown[]>("/api/admin/users?status=LOCKED"),
   ]);
   const users = [...activeUsers, ...lockedUsers].filter(isBackendUserResponse);
   const uniqueUsers = dedupeById(users);
   const usersWithRoles = await Promise.all(
     uniqueUsers.map(async (user) => {
-      const roleCodes = await fetchBackendRoleCodesForUser(user.id, actor);
+      const roleCodes = await fetchBackendRoleCodesForUser(user.id);
       return mapUser(user, roleCodes);
     }),
   );
   return usersWithRoles;
 }
 
-export async function createAdminUser(
-  actor: UserActor | undefined,
-  draft: UserDraft,
-  labId: string,
-): Promise<UserAccount> {
-  const created = await request<unknown>(
-    "/api/admin/users",
-    {
-      method: "POST",
-      body: {
-        labId,
-        username: makeUsername(draft.email),
-        email: draft.email,
-        passwordHash: DEMO_PASSWORD_HASH,
-        fullName: draft.fullName,
-        avatarFileId: null,
-      },
+export async function createAdminUser(draft: UserDraft, labId: string): Promise<UserAccount> {
+  const created = await request<unknown>("/api/admin/users", {
+    method: "POST",
+    body: {
+      labId,
+      username: makeUsername(draft.email),
+      email: draft.email,
+      password: draft.password,
+      fullName: draft.fullName,
+      avatarFileId: null,
     },
-    actor,
-  );
+  });
   if (!isBackendUserResponse(created)) {
     throw new Error("Backend returned an invalid user response.");
   }
-  await updateAdminUserRoles(actor, created.id, draft.roles);
+  await updateAdminUserRoles(created.id, draft.roles);
   if (draft.status === "locked") {
-    await request<unknown>(
-      `/api/admin/users/${encodeURIComponent(created.id)}/lock`,
-      { method: "PATCH" },
-      actor,
-    );
+    await request<unknown>(`/api/admin/users/${encodeURIComponent(created.id)}/lock`, {
+      method: "PATCH",
+    });
   }
-  return fetchAdminUser(actor, created.id);
+  return fetchAdminUser(created.id);
 }
 
-export async function updateAdminUser(
-  actor: UserActor | undefined,
-  userId: string,
-  patch: UserUpdate,
-): Promise<UserAccount> {
-  const current = await fetchAdminUser(actor, userId);
-  const updated = await request<unknown>(
-    `/api/admin/users/${encodeURIComponent(userId)}`,
-    {
-      method: "PUT",
-      body: {
-        username: current.username ?? makeUsername(patch.email),
-        email: patch.email,
-        fullName: patch.fullName,
-        avatarFileId: null,
-        clearAvatarFile: false,
-      },
+export async function updateAdminUser(userId: string, patch: UserUpdate): Promise<UserAccount> {
+  const current = await fetchAdminUser(userId);
+  const updated = await request<unknown>(`/api/admin/users/${encodeURIComponent(userId)}`, {
+    method: "PUT",
+    body: {
+      username: current.username ?? makeUsername(patch.email),
+      email: patch.email,
+      fullName: patch.fullName,
+      avatarFileId: null,
+      clearAvatarFile: false,
     },
-    actor,
-  );
+  });
   if (!isBackendUserResponse(updated)) {
     throw new Error("Backend returned an invalid user response.");
   }
-  const roleCodes = await fetchBackendRoleCodesForUser(userId, actor);
+  const roleCodes = await fetchBackendRoleCodesForUser(userId);
   return mapUser(updated, roleCodes);
 }
 
-export async function updateAdminUserRoles(
-  actor: UserActor | undefined,
-  userId: string,
-  nextRoles: Role[],
-): Promise<Role[]> {
+export async function updateAdminUserRoles(userId: string, nextRoles: Role[]): Promise<Role[]> {
   const [catalog, currentRoles] = await Promise.all([
-    fetchRoleCatalog(actor),
-    fetchBackendRolesForUser(userId, actor),
+    fetchRoleCatalog(),
+    fetchBackendRolesForUser(userId),
   ]);
   const desiredCodes = new Set(nextRoles.map(mapFrontendRole));
   const currentManagedCodes = new Set(
@@ -156,11 +132,10 @@ export async function updateAdminUserRoles(
     const roleId = catalog.find((role) => role.code === desiredCode)?.id;
     if (!roleId) throw new Error(`Backend role ${desiredCode} was not found.`);
     requests.push(
-      request(
-        `/api/admin/users/${encodeURIComponent(userId)}/roles`,
-        { method: "POST", body: { roleId } },
-        actor,
-      ),
+      request(`/api/admin/users/${encodeURIComponent(userId)}/roles`, {
+        method: "POST",
+        body: { roleId },
+      }),
     );
   }
   for (const currentCode of currentManagedCodes) {
@@ -171,70 +146,63 @@ export async function updateAdminUserRoles(
       request(
         `/api/admin/users/${encodeURIComponent(userId)}/roles/${encodeURIComponent(roleId)}`,
         { method: "DELETE" },
-        actor,
       ),
     );
   }
 
   await Promise.all(requests);
-  const updatedRoleCodes = await fetchBackendRoleCodesForUser(userId, actor);
+  const updatedRoleCodes = await fetchBackendRoleCodesForUser(userId);
   return mapRoleCodes(updatedRoleCodes);
 }
 
-export async function lockAdminUser(actor: UserActor | undefined, userId: string) {
-  return changeAdminUserStatus(actor, userId, "lock");
+export async function lockAdminUser(userId: string) {
+  return changeAdminUserStatus(userId, "lock");
 }
 
-export async function unlockAdminUser(actor: UserActor | undefined, userId: string) {
-  return changeAdminUserStatus(actor, userId, "unlock");
+export async function unlockAdminUser(userId: string) {
+  return changeAdminUserStatus(userId, "unlock");
 }
 
-export async function resetAdminUserPassword(actor: UserActor | undefined, userId: string) {
+export async function resetAdminUserPassword(userId: string, password: string) {
   const updated = await request<unknown>(
     `/api/admin/users/${encodeURIComponent(userId)}/reset-password`,
-    { method: "PATCH", body: { passwordHash: DEMO_PASSWORD_HASH } },
-    actor,
+    { method: "PATCH", body: { password } },
   );
   if (!isBackendUserResponse(updated)) {
     throw new Error("Backend returned an invalid user response.");
   }
-  const roleCodes = await fetchBackendRoleCodesForUser(userId, actor);
+  const roleCodes = await fetchBackendRoleCodesForUser(userId);
   return mapUser(updated, roleCodes);
 }
 
-export async function deleteAdminUser(actor: UserActor | undefined, userId: string) {
-  await request(`/api/admin/users/${encodeURIComponent(userId)}`, { method: "DELETE" }, actor);
+export async function deleteAdminUser(userId: string) {
+  await request(`/api/admin/users/${encodeURIComponent(userId)}`, { method: "DELETE" });
 }
 
-async function changeAdminUserStatus(
-  actor: UserActor | undefined,
-  userId: string,
-  action: "lock" | "unlock",
-) {
+async function changeAdminUserStatus(userId: string, action: "lock" | "unlock") {
   const updated = await request<unknown>(
     `/api/admin/users/${encodeURIComponent(userId)}/${action}`,
     { method: "PATCH" },
-    actor,
   );
   if (!isBackendUserResponse(updated)) {
     throw new Error("Backend returned an invalid user response.");
   }
-  const roleCodes = await fetchBackendRoleCodesForUser(userId, actor);
+  const roleCodes = await fetchBackendRoleCodesForUser(userId);
   return mapUser(updated, roleCodes);
 }
 
-async function fetchAdminUser(actor: UserActor | undefined, userId: string) {
-  const user = await request<unknown>(`/api/admin/users/${encodeURIComponent(userId)}`, {}, actor);
+async function fetchAdminUser(userId: string) {
+  const user = await request<unknown>(`/api/admin/users/${encodeURIComponent(userId)}`);
   if (!isBackendUserResponse(user)) {
     throw new Error("Backend returned an invalid user response.");
   }
-  const roleCodes = await fetchBackendRoleCodesForUser(userId, actor);
+  const roleCodes = await fetchBackendRoleCodesForUser(userId);
   return mapUser(user, roleCodes);
 }
 
-async function fetchRoleCatalog(actor?: UserActor) {
+async function fetchRoleCatalog() {
   if (roleCatalogCache) return roleCatalogCache;
-  const response = await request<unknown[]>("/api/admin/roles", {}, actor);
+  const response = await request<unknown[]>("/api/admin/roles");
   roleCatalogCache = response
     .filter(isBackendRoleCatalogResponse)
     .map((role) => ({ id: role.id, code: normalizeBackendRoleCode(role.code) }))
@@ -242,74 +210,22 @@ async function fetchRoleCatalog(actor?: UserActor) {
   return roleCatalogCache;
 }
 
-async function fetchBackendRolesForUser(userId: string, actor?: UserActor) {
-  const response = await request<unknown[]>(
-    `/api/admin/users/${encodeURIComponent(userId)}/roles`,
-    {},
-    actor,
-  );
+async function fetchBackendRolesForUser(userId: string) {
+  const response = await request<unknown[]>(`/api/admin/users/${encodeURIComponent(userId)}/roles`);
   return response
     .filter(isBackendUserRoleResponse)
     .filter((role) => !role.status || role.status === "ACTIVE");
 }
 
-async function fetchBackendRoleCodesForUser(userId: string, actor?: UserActor) {
-  const roles = await fetchBackendRolesForUser(userId, actor);
+async function fetchBackendRoleCodesForUser(userId: string) {
+  const roles = await fetchBackendRolesForUser(userId);
   return roles
     .map((role) => normalizeBackendRoleCode(role.code ?? role.roleCode))
     .filter((code): code is BackendRoleCode => !!code);
 }
 
-async function request<T>(
-  path: string,
-  options: RequestOptions = {},
-  actor?: UserActor,
-): Promise<T> {
-  const baseUrl = getApiBaseUrl();
-  if (!baseUrl) throw new Error("VITE_API_BASE_URL is not configured.");
-  const headers = new Headers();
-  headers.set("Accept", "application/json");
-  if (options.body !== undefined) headers.set("Content-Type", "application/json");
-  if (actor?.email) {
-    headers.set("Authorization", `Basic ${encodeBasic(`${actor.email}:${DEMO_PASSWORD}`)}`);
-  }
-
-  const response = await fetch(`${baseUrl}${path}`, {
-    method: options.method ?? "GET",
-    headers,
-    body: options.body === undefined ? undefined : JSON.stringify(options.body),
-  });
-  if (!response.ok) {
-    throw new Error(await readErrorMessage(response));
-  }
-  if (response.status === 204) return undefined as T;
-  return (await response.json()) as T;
-}
-
-async function readErrorMessage(response: Response) {
-  try {
-    const value = (await response.json()) as unknown;
-    if (isRecord(value)) {
-      return (
-        readString(value.message) ||
-        readString(value.error) ||
-        `Request failed (${response.status}).`
-      );
-    }
-  } catch {
-    // Fall through to the generic message.
-  }
-  return `Request failed (${response.status}).`;
-}
-
-function getApiBaseUrl() {
-  const raw = import.meta.env.VITE_API_BASE_URL;
-  if (!raw || !raw.trim()) return null;
-  return raw.trim().replace(/\/+$/, "");
-}
-
-function encodeBasic(value: string) {
-  return btoa(unescape(encodeURIComponent(value)));
+async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  return backendRequest<T>(path, options);
 }
 
 function mapUser(user: BackendUserResponse, roleCodes: BackendRoleCode[]): UserAccount {
@@ -330,36 +246,8 @@ function mapUser(user: BackendUserResponse, roleCodes: BackendRoleCode[]): UserA
   };
 }
 
-function mapRoleCodes(roleCodes: BackendRoleCode[]) {
-  return Array.from(
-    new Set(roleCodes.map(mapBackendRole).filter((role): role is Role => role !== null)),
-  );
-}
-
-function mapBackendRole(roleCode: BackendRoleCode): Role | null {
-  if (roleCode === "ADMIN") return "admin";
-  if (roleCode === "LEADER") return "leader";
-  if (roleCode === "MEMBER") return "member";
-  return null;
-}
-
-function mapFrontendRole(role: Role): BackendRoleCode {
-  if (role === "admin") return "ADMIN";
-  if (role === "leader") return "LEADER";
-  return "MEMBER";
-}
-
 function mapAccountStatus(status: BackendAccountStatus): AccountStatus {
   return status === "LOCKED" ? "locked" : "active";
-}
-
-function makeInitials(name: string) {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return "?";
-  return parts
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase() ?? "")
-    .join("");
 }
 
 function makeUsername(email: string) {
@@ -381,14 +269,6 @@ function dedupeById(users: BackendUserResponse[]) {
     result.push(user);
   }
   return result;
-}
-
-function normalizeBackendRoleCode(value: unknown): BackendRoleCode | null {
-  const code = readString(value).toUpperCase();
-  if (code === "SUPER_ADMIN" || code === "ADMIN" || code === "LEADER" || code === "MEMBER") {
-    return code;
-  }
-  return null;
 }
 
 function isBackendUserResponse(value: unknown): value is BackendUserResponse {

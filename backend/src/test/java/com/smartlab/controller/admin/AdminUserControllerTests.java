@@ -46,7 +46,7 @@ class AdminUserControllerTests {
 			.build();
 
 	@Test
-	void createUserReturnsCreatedResponseWithoutPasswordHash() throws Exception {
+	void createUserReturnsCreatedResponseWithoutPassword() throws Exception {
 		UUID userId = UUID.randomUUID();
 		UUID labId = UUID.randomUUID();
 		when(adminUserService.createManagedUser(any(AdminUserService.CreateManagedUserCommand.class)))
@@ -59,7 +59,7 @@ class AdminUserControllerTests {
 								  "labId": "%s",
 								  "username": "minh",
 								  "email": "Minh@Example.EDU",
-								  "passwordHash": "derived-password-hash",
+								  "password": "temporary-password",
 								  "fullName": "Minh Hoang"
 								}
 								""".formatted(labId)))
@@ -67,18 +67,18 @@ class AdminUserControllerTests {
 				.andExpect(header().string("Location", "/api/admin/users/" + userId))
 				.andExpect(jsonPath("$.id").value(userId.toString()))
 				.andExpect(jsonPath("$.email").value("minh@example.edu"))
-				.andExpect(jsonPath("$.passwordHash").doesNotExist())
-				.andExpect(content().string(not(containsString("derived-password-hash"))));
+				.andExpect(jsonPath("$.password").doesNotExist())
+				.andExpect(content().string(not(containsString("temporary-password"))));
 
 		ArgumentCaptor<AdminUserService.CreateManagedUserCommand> captor =
 				ArgumentCaptor.forClass(AdminUserService.CreateManagedUserCommand.class);
 		verify(adminUserService).createManagedUser(captor.capture());
 		assertEquals(labId, captor.getValue().labId());
-		assertEquals("derived-password-hash", captor.getValue().passwordHash());
+		assertEquals("temporary-password", captor.getValue().password());
 	}
 
 	@Test
-	void createUserValidationFailureDoesNotEchoPasswordHashOrCallService() throws Exception {
+	void createUserValidationFailureDoesNotEchoPasswordOrCallService() throws Exception {
 		mockMvc.perform(post("/api/admin/users")
 						.contentType(MediaType.APPLICATION_JSON)
 						.content("""
@@ -86,13 +86,13 @@ class AdminUserControllerTests {
 								  "labId": "%s",
 								  "username": "minh",
 								  "email": "not-an-email",
-								  "passwordHash": "",
+								  "password": "",
 								  "fullName": "Minh Hoang"
 								}
 								""".formatted(UUID.randomUUID())))
 				.andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.message").value("Request validation failed."))
-				.andExpect(content().string(not(containsString("passwordHash"))));
+				.andExpect(content().string(not(containsString("password"))));
 
 		verify(adminUserService, never()).createManagedUser(any());
 	}
@@ -205,7 +205,7 @@ class AdminUserControllerTests {
 				.thenReturn(userSummary(userId, labId, "minh", "minh@example.edu", UserAccountStatus.LOCKED));
 		when(adminUserService.unlockUser(userId))
 				.thenReturn(userSummary(userId, labId, "minh", "minh@example.edu", UserAccountStatus.ACTIVE));
-		when(adminUserService.resetPassword(userId, "new-derived-password-hash"))
+		when(adminUserService.resetPassword(userId, "new-temporary-password"))
 				.thenReturn(userSummary(userId, labId, "minh", "minh@example.edu", UserAccountStatus.ACTIVE));
 
 		mockMvc.perform(patch("/api/admin/users/{userId}/lock", userId))
@@ -217,17 +217,17 @@ class AdminUserControllerTests {
 		mockMvc.perform(patch("/api/admin/users/{userId}/reset-password", userId)
 						.contentType(MediaType.APPLICATION_JSON)
 						.content("""
-								{"passwordHash": "new-derived-password-hash"}
+								{"password": "new-temporary-password"}
 								"""))
 				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.passwordHash").doesNotExist())
-				.andExpect(content().string(not(containsString("new-derived-password-hash"))));
+				.andExpect(jsonPath("$.password").doesNotExist())
+				.andExpect(content().string(not(containsString("new-temporary-password"))));
 		mockMvc.perform(delete("/api/admin/users/{userId}", userId))
 				.andExpect(status().isNoContent());
 
 		verify(adminUserService).lockUser(userId);
 		verify(adminUserService).unlockUser(userId);
-		verify(adminUserService).resetPassword(userId, "new-derived-password-hash");
+		verify(adminUserService).resetPassword(userId, "new-temporary-password");
 		verify(adminUserService).softDeleteUser(userId, null);
 	}
 
@@ -244,7 +244,7 @@ class AdminUserControllerTests {
 								  "labId": "%s",
 								  "username": "minh",
 								  "email": "minh@example.edu",
-								  "passwordHash": "derived-password-hash",
+								  "password": "temporary-password",
 								  "fullName": "Minh Hoang"
 								}
 								""".formatted(labId)))
