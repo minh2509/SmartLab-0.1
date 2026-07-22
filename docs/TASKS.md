@@ -28,12 +28,12 @@
 ## ADM-007: Content Core Services
 
 - Assignee: Minh
-- Status: `READY_FOR_REVIEW`
+- Status: `DONE`
 - Progress: 100%
 - Branch: `feature/minh-content-core`
 - Test result: 30 tests run, 0 failures, 0 errors, 0 skipped; BUILD SUCCESS
 - Notes: Implemented `PostStatus`, slug generation/unique suffix logic, post workflow transition validation, and unit tests; verified with `SPRING_PROFILES_ACTIVE=nodb ./mvnw clean test`.
-
+- Notes: Merges into main via PR #6; 30 tests passed, 0 failures, 0 errors, 0 skipped.
 ### Scope
 
 - `PostStatus`
