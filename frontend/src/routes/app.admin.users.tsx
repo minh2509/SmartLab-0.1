@@ -1,6 +1,17 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { Lock, Pencil, Plus, Search, Unlock, Users } from "lucide-react";
-import { useMemo, useState } from "react";
+import {
+  KeyRound,
+  Lock,
+  Pencil,
+  Plus,
+  RefreshCw,
+  Search,
+  Trash2,
+  Unlock,
+  Users,
+  X,
+} from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import { AccountStatusDialog } from "@/components/app/users/AccountStatusDialog";
 import { UserFormDialog } from "@/components/app/users/UserFormDialog";
 import { EmptyState, PageHeader, Panel, StatusPill } from "@/components/app/ui";
@@ -31,7 +42,20 @@ type StatusFilter = "all" | AccountStatus;
 function AdminUsersPage() {
   const { user, activeRole } = useAuth();
   const { projects } = useProjects();
-  const { users, create, update, updateRoles, lock, unlock } = useUsers();
+  const {
+    users,
+    create,
+    update,
+    updateRoles,
+    lock,
+    unlock,
+    resetPassword,
+    deleteUser,
+    refresh,
+    loading,
+    loadError,
+    remoteEnabled,
+  } = useUsers();
   const [query, setQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState<RoleFilter>("all");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
@@ -39,10 +63,33 @@ function AdminUsersPage() {
   const [editing, setEditing] = useState<UserAccount | null>(null);
   const [statusTarget, setStatusTarget] = useState<UserAccount | null>(null);
   const [statusAction, setStatusAction] = useState<"lock" | "unlock">("lock");
+  const [confirmTarget, setConfirmTarget] = useState<UserAccount | null>(null);
+  const [confirmAction, setConfirmAction] = useState<"reset-password" | "delete">("reset-password");
   const [saving, setSaving] = useState(false);
   const [statusPending, setStatusPending] = useState(false);
+  const [confirmPending, setConfirmPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  const actor: UserActor | null = useMemo(
+    () =>
+      user
+        ? {
+            id: user.id,
+            email: user.email,
+            roles: user.roles,
+            isMainAdmin: user.isMainAdmin,
+            labId: user.labId,
+          }
+        : null,
+    [user],
+  );
+  const isAdminRoute = !!user && activeRole === "admin" && user.roles.includes("admin");
+
+  useEffect(() => {
+    if (!actor || !isAdminRoute) return;
+    void refresh(actor);
+  }, [actor, isAdminRoute, refresh]);
 
   const filtered = useMemo(
     () =>
@@ -62,13 +109,7 @@ function AdminUsersPage() {
     [query, roleFilter, statusFilter, users],
   );
 
-  if (!user || !activeRole) return null;
-  const actor: UserActor = {
-    id: user.id,
-    roles: user.roles,
-    isMainAdmin: user.isMainAdmin,
-  };
-  const isAdminRoute = activeRole === "admin" && user.roles.includes("admin");
+  if (!user || !activeRole || !actor) return null;
 
   if (!isAdminRoute) {
     return (
@@ -87,14 +128,14 @@ function AdminUsersPage() {
   const activeCount = users.filter((account) => account.status === "active").length;
   const adminCount = users.filter((account) => account.roles.includes("admin")).length;
 
-  const saveUser = (draft: UserDraft) => {
+  const saveUser = async (draft: UserDraft) => {
     if (saving) return;
     setSaving(true);
     setError(null);
     setSuccess(null);
     const result = editing
-      ? (() => {
-          const roleResult = updateRoles(actor, editing.id, draft.roles, projects);
+      ? await (async () => {
+          const roleResult = await updateRoles(actor, editing.id, draft.roles, projects);
           return roleResult.ok
             ? update(actor, editing.id, {
                 fullName: draft.fullName,
@@ -103,7 +144,7 @@ function AdminUsersPage() {
               })
             : roleResult;
         })()
-      : create(actor, draft);
+      : await create(actor, draft);
     setSaving(false);
     if (!result.ok) {
       setError(result.error);
@@ -114,13 +155,15 @@ function AdminUsersPage() {
     setSuccess(editing ? "User account updated." : "User account created.");
   };
 
-  const runStatusAction = () => {
+  const runStatusAction = async () => {
     if (!statusTarget || statusPending) return;
     setStatusPending(true);
     setError(null);
     setSuccess(null);
     const result =
-      statusAction === "lock" ? lock(actor, statusTarget.id) : unlock(actor, statusTarget.id);
+      statusAction === "lock"
+        ? await lock(actor, statusTarget.id)
+        : await unlock(actor, statusTarget.id);
     setStatusPending(false);
     if (!result.ok) {
       setError(result.error);
@@ -131,30 +174,82 @@ function AdminUsersPage() {
     setStatusTarget(null);
   };
 
+  const refreshUsers = async () => {
+    if (loading) return;
+    setError(null);
+    setSuccess(null);
+    const result = await refresh(actor);
+    if (!result.ok) setError(result.error);
+    else setSuccess(remoteEnabled ? "Backend users refreshed." : "Demo users refreshed.");
+  };
+
+  const runConfirmAction = async () => {
+    if (!confirmTarget || confirmPending) return;
+    setConfirmPending(true);
+    setError(null);
+    setSuccess(null);
+    const result =
+      confirmAction === "reset-password"
+        ? await resetPassword(actor, confirmTarget.id)
+        : await deleteUser(actor, confirmTarget.id);
+    setConfirmPending(false);
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
+    if (confirmAction === "delete") clearSessionIfUser(confirmTarget.id);
+    setSuccess(
+      confirmAction === "reset-password"
+        ? "Demo password reset for this user."
+        : "User account deleted.",
+    );
+    setConfirmTarget(null);
+  };
+
+  const displayedError = error ?? loadError;
+
   return (
     <>
       <PageHeader
         eyebrow={user.isMainAdmin ? "Main Admin" : "Admin"}
         title="User management"
-        description="Manage frontend-demo lab accounts, role assignments, and account lock status."
+        description={
+          remoteEnabled
+            ? "Manage backend lab accounts, role assignments, password resets, and account status."
+            : "Manage frontend-demo lab accounts, role assignments, and account lock status."
+        }
         action={
-          <button
-            onClick={() => {
-              setCreating(true);
-              setEditing(null);
-              setError(null);
-              setSuccess(null);
-            }}
-            className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90"
-          >
-            <Plus className="h-3.5 w-3.5" /> Create user
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={refreshUsers}
+              disabled={loading}
+              className="inline-flex items-center gap-1.5 rounded-md border border-hairline px-3 py-1.5 text-xs font-medium text-ink hover:bg-muted disabled:cursor-not-allowed disabled:opacity-45"
+            >
+              <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} /> Refresh
+            </button>
+            <button
+              onClick={() => {
+                setCreating(true);
+                setEditing(null);
+                setError(null);
+                setSuccess(null);
+              }}
+              className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90"
+            >
+              <Plus className="h-3.5 w-3.5" /> Create user
+            </button>
+          </div>
         }
       />
 
-      {error ? (
+      {loading ? (
+        <div className="mb-4 rounded-md border border-hairline bg-muted/40 px-3 py-2 text-xs text-ink-soft">
+          Loading users from {remoteEnabled ? "backend API" : "demo storage"}...
+        </div>
+      ) : null}
+      {displayedError ? (
         <div className="mb-4 rounded-md border border-[color:var(--destructive)]/40 bg-[color-mix(in_oklab,var(--destructive)_10%,transparent)] px-3 py-2 text-xs text-[color:var(--destructive)]">
-          {error}
+          {displayedError}
         </div>
       ) : null}
       {success ? (
@@ -171,7 +266,7 @@ function AdminUsersPage() {
 
       <Panel
         title="Accounts"
-        description={`${filtered.length} shown`}
+        description={`${filtered.length} shown${remoteEnabled ? " - Backend API" : ""}`}
         action={
           <div className="flex flex-wrap items-center gap-2">
             <div className="relative">
@@ -213,7 +308,7 @@ function AdminUsersPage() {
           />
         ) : (
           <div className="-mx-5 -mb-5 overflow-x-auto">
-            <table className="w-full min-w-[920px] text-sm">
+            <table className="w-full min-w-[1080px] text-sm">
               <thead>
                 <tr className="border-t border-hairline text-left text-[11px] uppercase tracking-[0.14em] text-ink-soft">
                   <th className="px-5 py-3 font-medium">User</th>
@@ -227,6 +322,8 @@ function AdminUsersPage() {
                 {filtered.map((account) => {
                   const editBlocked = getEditBlock(actor, account);
                   const statusBlocked = getStatusBlock(actor, account);
+                  const resetBlocked = editBlocked;
+                  const deleteBlocked = getDeleteBlock(actor, account);
                   return (
                     <tr key={account.id} className="border-t border-hairline align-top">
                       <td className="px-5 py-3">
@@ -268,7 +365,7 @@ function AdminUsersPage() {
                       <td className="px-5 py-3">
                         <div className="flex items-center justify-end gap-1">
                           <button
-                            disabled={!!editBlocked}
+                            disabled={!!editBlocked || saving}
                             onClick={() => {
                               setEditing(account);
                               setCreating(false);
@@ -285,7 +382,7 @@ function AdminUsersPage() {
                             <Pencil className="h-3.5 w-3.5" /> Edit
                           </button>
                           <button
-                            disabled={!!statusBlocked}
+                            disabled={!!statusBlocked || statusPending}
                             onClick={() => {
                               setStatusTarget(account);
                               setStatusAction(account.status === "active" ? "lock" : "unlock");
@@ -305,6 +402,40 @@ function AdminUsersPage() {
                               <Unlock className="h-3.5 w-3.5" />
                             )}
                             {account.status === "active" ? "Lock" : "Unlock"}
+                          </button>
+                          <button
+                            disabled={!!resetBlocked || confirmPending}
+                            onClick={() => {
+                              setConfirmTarget(account);
+                              setConfirmAction("reset-password");
+                              setError(null);
+                            }}
+                            title={resetBlocked ?? "Reset demo password"}
+                            className={cn(
+                              "inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs",
+                              resetBlocked
+                                ? "cursor-not-allowed text-ink-soft/40"
+                                : "text-ink-soft hover:bg-muted hover:text-ink",
+                            )}
+                          >
+                            <KeyRound className="h-3.5 w-3.5" /> Reset
+                          </button>
+                          <button
+                            disabled={!!deleteBlocked || confirmPending}
+                            onClick={() => {
+                              setConfirmTarget(account);
+                              setConfirmAction("delete");
+                              setError(null);
+                            }}
+                            title={deleteBlocked ?? "Delete user"}
+                            className={cn(
+                              "inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs",
+                              deleteBlocked
+                                ? "cursor-not-allowed text-ink-soft/40"
+                                : "text-[color:var(--destructive)] hover:bg-muted",
+                            )}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" /> Delete
                           </button>
                         </div>
                       </td>
@@ -350,12 +481,31 @@ function AdminUsersPage() {
         }}
         onConfirm={runStatusAction}
       />
+
+      <ConfirmUserActionDialog
+        user={confirmTarget}
+        action={confirmAction}
+        open={!!confirmTarget}
+        pending={confirmPending}
+        error={error}
+        onClose={() => {
+          if (!confirmPending) {
+            setConfirmTarget(null);
+            setError(null);
+          }
+        }}
+        onConfirm={runConfirmAction}
+      />
     </>
   );
 }
 
+function isActorSelf(actor: UserActor, target: UserAccount) {
+  return actor.id === target.id || actor.email === target.email;
+}
+
 function getEditBlock(actor: UserActor, target: UserAccount) {
-  if (actor.id === target.id) return "Admins cannot edit their own account through this UI.";
+  if (isActorSelf(actor, target)) return "Admins cannot edit their own account through this UI.";
   if (actor.isMainAdmin) return null;
   if (target.isMainAdmin) return "Regular Admins cannot modify the Main Admin.";
   if (target.roles.includes("admin")) return "Regular Admins cannot edit Admin accounts.";
@@ -363,10 +513,18 @@ function getEditBlock(actor: UserActor, target: UserAccount) {
 }
 
 function getStatusBlock(actor: UserActor, target: UserAccount) {
-  if (actor.id === target.id) return "Admins cannot lock their own account.";
+  if (isActorSelf(actor, target)) return "Admins cannot lock their own account.";
   if (target.isMainAdmin) return "Main Admin cannot be locked.";
   if (actor.isMainAdmin) return null;
   if (target.roles.includes("admin")) return "Regular Admins cannot lock or unlock Admin accounts.";
+  return null;
+}
+
+function getDeleteBlock(actor: UserActor, target: UserAccount) {
+  if (isActorSelf(actor, target)) return "Admins cannot delete their own account.";
+  if (target.isMainAdmin) return "Main Admin cannot be deleted.";
+  if (actor.isMainAdmin) return null;
+  if (target.roles.includes("admin")) return "Regular Admins cannot delete Admin accounts.";
   return null;
 }
 
@@ -396,6 +554,111 @@ function MiniStat({
         )}
       >
         {value}
+      </div>
+    </div>
+  );
+}
+
+function ConfirmUserActionDialog({
+  user,
+  action,
+  open,
+  pending,
+  error,
+  onClose,
+  onConfirm,
+}: {
+  user: UserAccount | null;
+  action: "reset-password" | "delete";
+  open: boolean;
+  pending: boolean;
+  error?: string | null;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  const [confirmation, setConfirmation] = useState("");
+  useEffect(() => setConfirmation(""), [user?.id, action, open]);
+  if (!open || !user) return null;
+
+  const destructive = action === "delete";
+  const phrase = destructive ? "DELETE USER" : "RESET PASSWORD";
+  const valid = confirmation.trim() === phrase;
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4 backdrop-blur-sm"
+      onMouseDown={pending ? undefined : onClose}
+    >
+      <div
+        onMouseDown={(event) => event.stopPropagation()}
+        className="w-full max-w-md rounded-xl border border-hairline bg-surface-elev shadow-xl"
+      >
+        <header className="flex items-start justify-between gap-4 border-b border-hairline px-5 py-4">
+          <div>
+            <div className="text-[11px] uppercase tracking-[0.14em] text-ink-soft">
+              {destructive ? "Delete user" : "Reset password"}
+            </div>
+            <h2 className="mt-0.5 text-sm font-semibold text-ink">{user.fullName}</h2>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={pending}
+            className="rounded-md p-1 text-ink-soft hover:bg-muted hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
+            aria-label="Close"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </header>
+
+        <div className="space-y-4 p-5">
+          <p className="text-sm leading-relaxed text-ink-soft">
+            {destructive
+              ? "This soft-deletes the backend account or removes the local demo account from the active user list."
+              : "This restores the shared demo password for the backend account. Local demo accounts already use the shared password."}
+          </p>
+          <label className="block">
+            <div className="mb-1 text-[11px] uppercase tracking-[0.14em] text-ink-soft">
+              Type {phrase}
+            </div>
+            <input
+              value={confirmation}
+              onChange={(event) => setConfirmation(event.target.value)}
+              className="w-full rounded-md border border-hairline bg-background px-2.5 py-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-[color:var(--cyan)]/40"
+            />
+          </label>
+          {error ? (
+            <div className="rounded-md border border-[color:var(--destructive)]/40 bg-[color-mix(in_oklab,var(--destructive)_10%,transparent)] px-3 py-2 text-xs text-[color:var(--destructive)]">
+              {error}
+            </div>
+          ) : null}
+        </div>
+
+        <footer className="flex items-center justify-end gap-2 border-t border-hairline px-5 py-4">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={pending}
+            className="rounded-md border border-hairline px-3 py-1.5 text-sm text-ink hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            disabled={!valid || pending}
+            onClick={onConfirm}
+            className={cn(
+              "rounded-md px-3.5 py-1.5 text-sm font-medium transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40",
+              destructive
+                ? "bg-[color:var(--destructive)] text-white"
+                : "bg-primary text-primary-foreground",
+            )}
+          >
+            {pending ? "Saving..." : destructive ? "Delete user" : "Reset password"}
+          </button>
+        </footer>
       </div>
     </div>
   );

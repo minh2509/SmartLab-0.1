@@ -1,4 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
+import {
+  createAdminUser,
+  deleteAdminUser,
+  fetchAdminUsers,
+  isAdminUsersApiConfigured,
+  lockAdminUser,
+  resetAdminUserPassword,
+  unlockAdminUser,
+  updateAdminUser,
+  updateAdminUserRoles,
+} from "@/lib/admin-users-api";
 import type { Project } from "@/lib/projects-data";
 
 export type Role = "admin" | "leader" | "member";
@@ -16,6 +27,9 @@ export type UserAccount = {
   createdAt: string;
   updatedAt: string;
   lastLoginAt?: string;
+  username?: string;
+  labId?: string;
+  avatarFileId?: string | null;
 };
 
 export type UserDraft = {
@@ -30,11 +44,13 @@ export type UserUpdate = Pick<UserDraft, "fullName" | "email" | "title">;
 
 export type UserActor = {
   id: string;
+  email?: string;
   roles: Role[];
   isMainAdmin: boolean;
+  labId?: string;
 };
 
-type Result<T = UserAccount> = { ok: true; value: T } | { ok: false; error: string };
+export type Result<T = UserAccount> = { ok: true; value: T } | { ok: false; error: string };
 
 const STORAGE_KEY = "smart.users.v1";
 const SESSION_STORAGE_KEY = "smart.session.v1";
@@ -279,15 +295,17 @@ export function getActiveUsers() {
 
 function canManageUser(actor: UserActor, target: UserAccount) {
   if (!actor.roles.includes("admin")) return "Only Admin users can manage accounts.";
-  if (actor.id === target.id) return "Admins cannot modify their own account through this UI.";
+  if (actor.id === target.id || actor.email === target.email) {
+    return "Admins cannot modify their own account through this UI.";
+  }
   if (actor.isMainAdmin) return null;
   if (target.isMainAdmin) return "Regular Admins cannot modify the Main Admin.";
   if (target.roles.includes("admin")) return "Regular Admins cannot modify Admin accounts.";
   return null;
 }
 
-function validateEmailUnique(email: string, excludeId?: string) {
-  return !getUsers().some((user) => user.id !== excludeId && user.email === normalizeEmail(email));
+function validateEmailUnique(email: string, excludeId?: string, source = getUsers()) {
+  return !source.some((user) => user.id !== excludeId && user.email === normalizeEmail(email));
 }
 
 function validateRolesForActor(actor: UserActor, target: UserAccount | null, nextRoles: Role[]) {
@@ -302,7 +320,9 @@ function validateRolesForActor(actor: UserActor, target: UserAccount | null, nex
   }
   if (nextRoles.includes("admin")) return "Regular Admins cannot grant the Admin role.";
   if (target?.roles.includes("admin")) return "Regular Admins cannot edit Admin roles.";
-  if (target?.id === actor.id) return "Admins cannot remove their own role through this UI.";
+  if (target?.id === actor.id || target?.email === actor.email) {
+    return "Admins cannot remove their own role through this UI.";
+  }
   return null;
 }
 
@@ -416,6 +436,26 @@ export function unlockUser(actor: UserActor, userId: string): Result {
   return ok ? { ok: true, value: next } : { ok: false, error: "Account unlock failed." };
 }
 
+export function resetUserPassword(actor: UserActor, userId: string): Result {
+  const current = getUserById(userId);
+  if (!current) return { ok: false, error: "User not found." };
+  const permissionError = canManageUser(actor, current);
+  if (permissionError) return { ok: false, error: permissionError };
+  return { ok: true, value: current };
+}
+
+export function deleteUser(actor: UserActor, userId: string): Result {
+  const current = getUserById(userId);
+  if (!current) return { ok: false, error: "User not found." };
+  const permissionError = canManageUser(actor, current);
+  if (permissionError) return { ok: false, error: permissionError };
+  if (current.isMainAdmin) return { ok: false, error: "Main Admin cannot be deleted." };
+  if (current.id === actor.id)
+    return { ok: false, error: "Admins cannot delete their own account." };
+  const ok = setUsers(getUsers().filter((user) => user.id !== userId));
+  return ok ? { ok: true, value: current } : { ok: false, error: "User deletion failed." };
+}
+
 export function recordLogin(userId: string) {
   const current = getUserById(userId);
   if (!current) return false;
@@ -446,20 +486,243 @@ export function clearSessionIfUser(userId: string) {
 
 export function useUsers() {
   const [users, setList] = useState<UserAccount[]>(() => getUsers());
+  const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const remoteEnabled = isAdminUsersApiConfigured();
+
   useEffect(() => subscribeToUsers(setList), []);
 
-  const create = useCallback((actor: UserActor, draft: UserDraft) => createUser(actor, draft), []);
+  const refresh = useCallback(
+    async (actor?: UserActor): Promise<Result<UserAccount[]>> => {
+      if (!remoteEnabled) {
+        const next = getUsers();
+        setList(next);
+        setLoadError(null);
+        return { ok: true, value: next };
+      }
+      setLoading(true);
+      setLoadError(null);
+      try {
+        const remoteUsers = preserveLocalDisplayFields(await fetchAdminUsers(actor));
+        setList(remoteUsers);
+        return { ok: true, value: remoteUsers };
+      } catch (error) {
+        const message = getErrorMessage(error);
+        setLoadError(message);
+        return { ok: false, error: message };
+      } finally {
+        setLoading(false);
+      }
+    },
+    [remoteEnabled],
+  );
+
+  const create = useCallback(
+    async (actor: UserActor, draft: UserDraft): Promise<Result> => {
+      if (!remoteEnabled) return createUser(actor, draft);
+      const cleaned = cleanDraft(draft);
+      const roleError = validateRolesForActor(actor, null, cleaned.roles);
+      if (roleError) return { ok: false, error: roleError };
+      if (!cleaned.fullName) return { ok: false, error: "Full name is required." };
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleaned.email)) {
+        return { ok: false, error: "Email is invalid." };
+      }
+      if (!validateEmailUnique(cleaned.email, undefined, users)) {
+        return { ok: false, error: "Email already exists." };
+      }
+      const labId = actor.labId ?? users.find((user) => user.labId)?.labId;
+      if (!labId) {
+        return {
+          ok: false,
+          error: "Backend lab ID is unavailable. Refresh users before creating.",
+        };
+      }
+      try {
+        const created = await createAdminUser(actor, cleaned, labId);
+        const value = preserveLocalDisplayField(created, cleaned);
+        setList((current) => [value, ...current.filter((user) => user.id !== value.id)]);
+        return { ok: true, value };
+      } catch (error) {
+        return { ok: false, error: getErrorMessage(error) };
+      }
+    },
+    [remoteEnabled, users],
+  );
+
   const update = useCallback(
-    (actor: UserActor, userId: string, patch: UserUpdate) => updateUser(actor, userId, patch),
-    [],
+    async (actor: UserActor, userId: string, patch: UserUpdate): Promise<Result> => {
+      if (!remoteEnabled) return updateUser(actor, userId, patch);
+      const current = users.find((user) => user.id === userId);
+      if (!current) return { ok: false, error: "User not found." };
+      const permissionError = canManageUser(actor, current);
+      if (permissionError) return { ok: false, error: permissionError };
+      const fullName = patch.fullName.trim();
+      const email = normalizeEmail(patch.email);
+      if (!fullName) return { ok: false, error: "Full name is required." };
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+        return { ok: false, error: "Email is invalid." };
+      if (!validateEmailUnique(email, userId, users))
+        return { ok: false, error: "Email already exists." };
+      try {
+        const updated = await updateAdminUser(actor, userId, {
+          fullName,
+          email,
+          title: patch.title.trim(),
+        });
+        const value = preserveLocalDisplayField(updated, {
+          fullName,
+          email,
+          title: patch.title.trim(),
+          roles: updated.roles,
+          status: updated.status,
+        });
+        setList((currentList) => currentList.map((user) => (user.id === userId ? value : user)));
+        return { ok: true, value };
+      } catch (error) {
+        return { ok: false, error: getErrorMessage(error) };
+      }
+    },
+    [remoteEnabled, users],
   );
   const updateRoles = useCallback(
-    (actor: UserActor, userId: string, nextRoles: Role[], projects: Project[]) =>
-      updateUserRoles(actor, userId, nextRoles, projects),
-    [],
+    async (
+      actor: UserActor,
+      userId: string,
+      nextRoles: Role[],
+      projects: Project[],
+    ): Promise<Result> => {
+      if (!remoteEnabled) return updateUserRoles(actor, userId, nextRoles, projects);
+      const current = users.find((user) => user.id === userId);
+      if (!current) return { ok: false, error: "User not found." };
+      const permissionError = canManageUser(actor, current);
+      if (permissionError) return { ok: false, error: permissionError };
+      const cleanedRoles = Array.from(new Set(nextRoles));
+      const roleError = validateRolesForActor(actor, current, cleanedRoles);
+      if (roleError) return { ok: false, error: roleError };
+      const leaderBlock = getLeaderRoleRemovalBlock(userId, cleanedRoles, projects);
+      if (leaderBlock) return { ok: false, error: leaderBlock };
+      try {
+        const roles = await updateAdminUserRoles(actor, userId, cleanedRoles);
+        const value = { ...current, roles, updatedAt: new Date().toISOString() };
+        setList((currentList) => currentList.map((user) => (user.id === userId ? value : user)));
+        return { ok: true, value };
+      } catch (error) {
+        return { ok: false, error: getErrorMessage(error) };
+      }
+    },
+    [remoteEnabled, users],
   );
-  const lock = useCallback((actor: UserActor, userId: string) => lockUser(actor, userId), []);
-  const unlock = useCallback((actor: UserActor, userId: string) => unlockUser(actor, userId), []);
+  const lock = useCallback(
+    async (actor: UserActor, userId: string): Promise<Result> => {
+      if (!remoteEnabled) return lockUser(actor, userId);
+      const current = users.find((user) => user.id === userId);
+      if (!current) return { ok: false, error: "User not found." };
+      const permissionError = canManageUser(actor, current);
+      if (permissionError) return { ok: false, error: permissionError };
+      if (current.isMainAdmin) return { ok: false, error: "Main Admin cannot be locked." };
+      if (current.id === actor.id)
+        return { ok: false, error: "Admins cannot lock their own account." };
+      try {
+        const value = preserveLocalDisplayField(await lockAdminUser(actor, userId), current);
+        setList((currentList) => currentList.map((user) => (user.id === userId ? value : user)));
+        return { ok: true, value };
+      } catch (error) {
+        return { ok: false, error: getErrorMessage(error) };
+      }
+    },
+    [remoteEnabled, users],
+  );
+  const unlock = useCallback(
+    async (actor: UserActor, userId: string): Promise<Result> => {
+      if (!remoteEnabled) return unlockUser(actor, userId);
+      const current = users.find((user) => user.id === userId);
+      if (!current) return { ok: false, error: "User not found." };
+      const permissionError = canManageUser(actor, current);
+      if (permissionError) return { ok: false, error: permissionError };
+      try {
+        const value = preserveLocalDisplayField(await unlockAdminUser(actor, userId), current);
+        setList((currentList) => currentList.map((user) => (user.id === userId ? value : user)));
+        return { ok: true, value };
+      } catch (error) {
+        return { ok: false, error: getErrorMessage(error) };
+      }
+    },
+    [remoteEnabled, users],
+  );
+  const resetPassword = useCallback(
+    async (actor: UserActor, userId: string): Promise<Result> => {
+      if (!remoteEnabled) return resetUserPassword(actor, userId);
+      const current = users.find((user) => user.id === userId);
+      if (!current) return { ok: false, error: "User not found." };
+      const permissionError = canManageUser(actor, current);
+      if (permissionError) return { ok: false, error: permissionError };
+      try {
+        const value = preserveLocalDisplayField(
+          await resetAdminUserPassword(actor, userId),
+          current,
+        );
+        setList((currentList) => currentList.map((user) => (user.id === userId ? value : user)));
+        return { ok: true, value };
+      } catch (error) {
+        return { ok: false, error: getErrorMessage(error) };
+      }
+    },
+    [remoteEnabled, users],
+  );
+  const remove = useCallback(
+    async (actor: UserActor, userId: string): Promise<Result> => {
+      if (!remoteEnabled) return deleteUser(actor, userId);
+      const current = users.find((user) => user.id === userId);
+      if (!current) return { ok: false, error: "User not found." };
+      const permissionError = canManageUser(actor, current);
+      if (permissionError) return { ok: false, error: permissionError };
+      if (current.isMainAdmin) return { ok: false, error: "Main Admin cannot be deleted." };
+      if (current.id === actor.id)
+        return { ok: false, error: "Admins cannot delete their own account." };
+      try {
+        await deleteAdminUser(actor, userId);
+        setList((currentList) => currentList.filter((user) => user.id !== userId));
+        return { ok: true, value: current };
+      } catch (error) {
+        return { ok: false, error: getErrorMessage(error) };
+      }
+    },
+    [remoteEnabled, users],
+  );
 
-  return { users, create, update, updateRoles, lock, unlock, resetUsers };
+  return {
+    users,
+    create,
+    update,
+    updateRoles,
+    lock,
+    unlock,
+    resetPassword,
+    deleteUser: remove,
+    refresh,
+    loading,
+    loadError,
+    remoteEnabled,
+    resetUsers,
+  };
+}
+
+function preserveLocalDisplayFields(users: UserAccount[]) {
+  return users.map((user) => preserveLocalDisplayField(user));
+}
+
+function preserveLocalDisplayField(user: UserAccount, fallback?: Partial<UserDraft | UserAccount>) {
+  const local = getUsers().find((item) => item.id === user.id || item.email === user.email);
+  const title = fallback?.title ?? local?.title ?? user.title;
+  return {
+    ...user,
+    title,
+    createdAt: user.createdAt || local?.createdAt || seedCreatedAt,
+    updatedAt: user.updatedAt || local?.updatedAt || seedCreatedAt,
+    lastLoginAt: user.lastLoginAt ?? local?.lastLoginAt,
+  };
+}
+
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : "Request failed.";
 }

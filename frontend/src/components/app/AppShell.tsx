@@ -15,6 +15,8 @@ import {
   ListChecks,
   ClipboardCheck,
   CalendarDays,
+  FileClock,
+  History,
 } from "lucide-react";
 
 type AppNavPath =
@@ -27,6 +29,8 @@ type AppNavPath =
   | "/app/posts"
   | "/app/moderation/posts"
   | "/app/admin/users"
+  | "/app/admin/audit-logs"
+  | "/app/admin/login-histories"
   | "/app/notifications";
 
 type NavItem = {
@@ -95,6 +99,18 @@ const NAV: NavItem[] = [
     label: "Administration",
     to: "/app/admin/users",
     icon: ShieldCheck,
+    roles: ["admin"],
+  },
+  {
+    label: "Audit Logs",
+    to: "/app/admin/audit-logs",
+    icon: FileClock,
+    roles: ["admin"],
+  },
+  {
+    label: "Login History",
+    to: "/app/admin/login-histories",
+    icon: History,
     roles: ["admin"],
   },
 ];
