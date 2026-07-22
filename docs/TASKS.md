@@ -190,9 +190,20 @@ SPRING_PROFILES_ACTIVE=nodb ./mvnw clean test
 
 - Name: Implement task and member evaluation persistence
 - Assignee: Minh
-- Status: `READY_FOR_REVIEW`
+- Status: `DONE`
 - Progress: 100%
 - Branch: `feature/minh-task-evaluation-persistence`
 - Test result: `73 tests run, 0 failures, 0 errors, 0 skipped; PostgreSQL schema validation, twenty-two JPA repositories, application startup, and actuator health verified`
 - Scope: Task, assignee, report, attachment, member evaluation, evaluation detail entities, enums, repositories, and mapping tests
-- Notes: Verified against PostgreSQL 18.4 with Flyway schema version 9; Hibernate mappings initialized successfully, twenty-two repository interfaces were detected, and `/actuator/health` returned HTTP 200.
+- Notes: PR #16 merged into `main`; PostgreSQL persistence verification completed successfully.
+
+## BE-005: Implement content and moderation persistence
+
+- Name: Implement content and moderation persistence
+- Assignee: Minh
+- Status: `READY_FOR_REVIEW`
+- Progress: 100%
+- Branch: `feature/minh-content-persistence`
+- Test result: `85 tests run, 0 failures, 0 errors, 0 skipped; PostgreSQL schema validation, twenty-five JPA repositories, application startup, and actuator health verified`
+- Scope: Post, moderation log, post attachment entities, enums, repositories, and mapping tests
+- Notes: Verified against PostgreSQL 18.4 with Flyway schema version 9; Hibernate mappings initialized successfully, twenty-five repository interfaces were detected, existing PostStatus workflow consistency was preserved, and `/actuator/health` returned HTTP 200.

@@ -1,0 +1,12 @@
+package com.smartlab.enums;
+
+public enum PostContentType {
+	NEWS,
+	LAB_ANNOUNCEMENT,
+	PROJECT_ANNOUNCEMENT,
+	MEMBER_BLOG,
+	EXPERIENCE_SHARING,
+	ACADEMIC_POST,
+	RESEARCH_RESULT,
+	EVENT_CONTENT
+}
