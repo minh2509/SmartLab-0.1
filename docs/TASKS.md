@@ -158,8 +158,19 @@ SPRING_PROFILES_ACTIVE=nodb ./mvnw clean test
 
 - Name: Implement core identity JPA persistence
 - Assignee: Minh
-- Status: `READY_FOR_REVIEW`
+- Status: `DONE`
 - Progress: 100%
 - Branch: `feature/minh-core-identity-persistence`
 - Test result: `39 tests run, 0 failures, 0 errors, 0 skipped; PostgreSQL schema validation, seven JPA repositories, application startup, and actuator health verified`
-- Notes: Verified against PostgreSQL 18.4 with Flyway schema version 9; Hibernate mappings initialized successfully, seven repository interfaces were detected, and `/actuator/health` returned HTTP 200.
+- Notes: PR #13 merged into `main`; PostgreSQL persistence verification completed successfully.
+
+## BE-002: Implement member profile and catalog persistence
+
+- Name: Implement member profile and catalog persistence
+- Assignee: Minh
+- Status: `READY_FOR_REVIEW`
+- Progress: 100%
+- Branch: `feature/minh-profile-catalog-persistence`
+- Test result: `48 tests run, 0 failures, 0 errors, 0 skipped; PostgreSQL schema validation, twelve JPA repositories, application startup, and actuator health verified`
+- Scope: Member profile, research field, post category, evaluation criteria entities, repositories, enums, and mapping tests
+- Notes: Verified against PostgreSQL 18.4 with Flyway schema version 9; Hibernate mappings initialized successfully, twelve repository interfaces were detected, and `/actuator/health` returned HTTP 200.
