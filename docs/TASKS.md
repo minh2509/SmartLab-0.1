@@ -146,9 +146,20 @@ SPRING_PROFILES_ACTIVE=nodb ./mvnw clean test
 
 - Name: Implement Flyway V5-V9 feature migrations
 - Assignee: Minh
-- Status: `READY_FOR_REVIEW`
+- Status: `DONE`
 - Progress: 100%
 - Branch: `feature/db-feature-migrations`
 - Test result: `30 tests run, 0 failures, 0 errors, 0 skipped; Flyway V1-V9 applied successfully against an empty PostgreSQL 18.4 database`
 - Scope: Projects, membership, tasks, evaluations, content, notifications, audit, indexes, and stable reference seeds
 - Notes: Verified nine successful migrations, schema version v9, 30 tables, stable reference seeds, post moderation constraints, selected indexes, no deferred document/event tables, and `/actuator/health` returning HTTP 200.
+- Notes: PR #12 was merged into `main`.
+
+## BE-001: Implement core identity JPA persistence
+
+- Name: Implement core identity JPA persistence
+- Assignee: Minh
+- Status: `READY_FOR_REVIEW`
+- Progress: 100%
+- Branch: `feature/minh-core-identity-persistence`
+- Test result: `39 tests run, 0 failures, 0 errors, 0 skipped; PostgreSQL schema validation, seven JPA repositories, application startup, and actuator health verified`
+- Notes: Verified against PostgreSQL 18.4 with Flyway schema version 9; Hibernate mappings initialized successfully, seven repository interfaces were detected, and `/actuator/health` returned HTTP 200.
