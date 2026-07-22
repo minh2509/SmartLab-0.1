@@ -17,7 +17,7 @@ The system supports:
 - Website notifications.
 - Lab-wide and project-specific calendars.
 
-This is currently a demo-oriented frontend application. Some functionality may use mock data and `localStorage` instead of a production backend.
+This is currently a demo-oriented monorepo application. The frontend still contains mock data and `localStorage` behavior in several areas, while the backend is a Spring Boot foundation that should be expanded only when the active task requires it.
 
 Do not assume that visual functionality equals production-grade security.
 
@@ -25,28 +25,56 @@ Do not assume that visual functionality equals production-grade security.
 
 ## 2. Technical context
 
-The current project is built with:
+SmartLab is a monorepo, not a frontend-only project.
+
+Project structure:
+
+- `frontend/` contains the React, TypeScript, Vite, and TanStack frontend.
+- `backend/` contains the Java 21 and Spring Boot 4.1 backend.
+- `docs/` contains the project profile, task tracking, and Codex technology profiles.
+- `scripts/` contains local development runners.
+
+The frontend currently uses:
 
 - React.
 - TypeScript.
 - Vite.
+- TanStack Router/Start.
 - Existing route-based page structure.
 - Existing shared design system and reusable components.
 - Mock authentication stored in `localStorage`.
 - Mock project data stored in `localStorage`.
 - Role-aware frontend navigation and route guards.
 
+The backend currently uses:
+
+- Java 21.
+- Spring Boot 4.1.
+- Maven Wrapper inside `backend/`.
+- Backend package root `com.smartlab`.
+- Spring Web MVC, Spring Security, Spring Data JPA, Flyway, PostgreSQL driver, and Actuator.
+- `nodb` profile for database-independent development and tests.
+
+PostgreSQL is the target database, but database integration is currently deferred.
+
 Before modifying code, inspect:
 
-- `package.json`
-- `src/routes/`
-- `src/components/`
-- `src/lib/`
+- `docs/PROJECT-PROFILE.md`
+- `docs/TASKS.md`
+- Root `package.json`
+- `frontend/package.json`
+- `backend/pom.xml`
+- `scripts/backend.mjs`
+- `frontend/src/routes/`
+- `frontend/src/components/`
+- `frontend/src/lib/`
+- `backend/src/main/java/com/smartlab/`
 - Existing route configuration
 - Existing authentication context
 - Existing project store
 - Existing shared UI primitives
 - Existing styles and design tokens
+- Existing backend packages, services, DTOs, controllers, repositories, and entities when backend work is in scope
 
 Do not assume this document perfectly matches the current implementation.
 
@@ -149,13 +177,75 @@ Do not:
 - Rewrite entire files when a focused change is sufficient.
 - Change the global design system unless required.
 - Modify unrelated flows.
-- Add a backend, database, or external service unless explicitly requested.
+- Add unrelated backend, database, or external-service work. Backend work is allowed only when required by the active task.
 - Replace `localStorage` with another persistence mechanism unless requested.
 - Add full CRUD for entities when only a shell or partial flow was requested.
 - Invent new business rules.
 - Duplicate an existing component, hook, type, or store.
 
 Prefer extending existing abstractions over creating parallel implementations.
+
+---
+
+## 4.1 Backend implementation rules
+
+Backend package root:
+
+```text
+com.smartlab
+```
+
+Backend architecture direction:
+
+```text
+Controller -> Service -> Repository -> Entity
+```
+
+Backend rules:
+
+- Business logic belongs in services.
+- Controllers handle HTTP request and response concerns.
+- Repositories handle persistence.
+- Entities must not be returned directly as API contracts.
+- Use request DTOs and response DTOs for APIs.
+- Do not bypass the service layer.
+- Do not add or upgrade dependencies without approval.
+- Do not change Java or Spring Boot versions without approval.
+- Do not invent permissions, workflow rules, persistence models, or API contracts.
+- Preserve the package structure under `com.smartlab` unless the active task explicitly changes it.
+
+Current database state:
+
+- PostgreSQL is the target database.
+- Database integration is currently deferred.
+- Database-independent tasks must use the `nodb` profile.
+- Do not create entities, repositories, migrations, or datasource configuration unless the active task requires them.
+- Do not commit real database credentials.
+
+Required backend test command:
+
+```bash
+cd backend
+SPRING_PROFILES_ACTIVE=nodb ./mvnw clean test
+```
+
+Required backend development command before database integration:
+
+```bash
+cd backend
+SPRING_PROFILES_ACTIVE=nodb ./mvnw spring-boot:run
+```
+
+---
+
+## 4.2 Frontend implementation rules
+
+- Preserve the existing React, TypeScript, Vite, and TanStack structure.
+- Preserve the existing design system.
+- Do not replace working mock or `localStorage` behavior unless the active task requires backend integration.
+- Do not redesign approved screens without explicit instruction.
+- Frontend role checks are for demo UX only and are not production authorization.
+- Do not introduce a second router, state-management library, styling framework, form library, icon library, or notification library unless explicitly requested and justified.
 
 ---
 
@@ -385,10 +475,10 @@ Restrictions:
 Expected files may include:
 
 ```text
-src/styles.css
-src/routes/index.tsx
-src/components/site/
-src/lib/lab-data.ts
+frontend/src/styles.css
+frontend/src/routes/index.tsx
+frontend/src/components/site/
+frontend/src/lib/lab-data.ts
 ```
 
 Expected reusable components may include:
@@ -457,13 +547,13 @@ Do not treat them as production credentials.
 Expected files may include:
 
 ```text
-src/lib/auth.tsx
-src/lib/dashboard-data.ts
-src/components/app/AppShell.tsx
-src/components/app/RoleSwitcher.tsx
-src/components/app/StatTile.tsx
-src/components/app/QueueRow.tsx
-src/components/app/EmptyState.tsx
+frontend/src/lib/auth.tsx
+frontend/src/lib/dashboard-data.ts
+frontend/src/components/app/AppShell.tsx
+frontend/src/components/app/RoleSwitcher.tsx
+frontend/src/components/app/StatTile.tsx
+frontend/src/components/app/QueueRow.tsx
+frontend/src/components/app/EmptyState.tsx
 ```
 
 Current authentication is expected to be mock authentication based on `localStorage`.
@@ -518,15 +608,15 @@ Expected route behavior:
 Expected files may include:
 
 ```text
-src/lib/projects-data.ts
-src/components/app/projects/ProjectTable.tsx
-src/components/app/projects/ProjectEditDialog.tsx
-src/components/app/projects/DeleteProjectDialog.tsx
-src/components/app/projects/ProjectDetailPanel.tsx
-src/routes/projects.tsx
-src/routes/projects_.$slug.tsx
-src/routes/app.projects.tsx
-src/routes/app.projects_.$slug.tsx
+frontend/src/lib/projects-data.ts
+frontend/src/components/app/projects/ProjectTable.tsx
+frontend/src/components/app/projects/ProjectEditDialog.tsx
+frontend/src/components/app/projects/DeleteProjectDialog.tsx
+frontend/src/components/app/projects/ProjectDetailPanel.tsx
+frontend/src/routes/projects.tsx
+frontend/src/routes/projects_.$slug.tsx
+frontend/src/routes/app.projects.tsx
+frontend/src/routes/app.projects_.$slug.tsx
 ```
 
 The exact route file naming depends on the router.
@@ -679,9 +769,9 @@ Do not use color alone to communicate status.
 
 ## 13. Code quality rules
 
-Use TypeScript properly.
+Use TypeScript and Java properly in their respective workspaces.
 
-Avoid:
+In frontend TypeScript, avoid:
 
 ```ts
 any
@@ -723,6 +813,16 @@ Keep one clear source of truth for:
 - Users.
 - Shared status definitions.
 
+In backend Java:
+
+- Keep business rules in services.
+- Keep HTTP concerns in controllers.
+- Keep persistence concerns in repositories.
+- Use explicit request and response DTOs at API boundaries.
+- Avoid exposing entities directly to API consumers.
+- Avoid broad exception swallowing.
+- Avoid adding Lombok usage, mappers, validation patterns, or helper libraries beyond what already exists unless the active task requires it and approval is given.
+
 ---
 
 ## 14. Mandatory workflow for each task
@@ -732,11 +832,16 @@ Keep one clear source of truth for:
 Before editing:
 
 - Read this file.
-- Read the feature request.
+- Read `docs/PROJECT-PROFILE.md`.
+- Read `docs/TASKS.md`.
+- Read the feature request and task-related requirements.
+- Check the current Git branch.
 - Inspect related existing files.
 - Search for duplicate concepts.
 - Check the current Git diff.
 - Identify existing routes, stores, components, and styles.
+- Identify existing backend packages, DTOs, services, repositories, entities, and configuration when backend work is in scope.
+- Report the expected files to change.
 
 ### Step 2: Plan
 
@@ -747,6 +852,7 @@ Provide a short implementation plan containing:
 - Data structures involved.
 - Permission checks.
 - Edge cases.
+- Backend layers, DTOs, persistence, or `nodb` impact when backend work is in scope.
 
 Do not start with a broad rewrite.
 
@@ -762,17 +868,48 @@ Keep changes focused and reviewable.
 
 Use the scripts that actually exist in `package.json`.
 
-Run applicable checks, for example:
+Run required tests or builds for the active task.
+
+For backend work that does not require database integration, use:
 
 ```bash
-npm run lint
-npm run typecheck
-npm run build
+cd backend
+SPRING_PROFILES_ACTIVE=nodb ./mvnw clean test
+```
+
+For frontend work, inspect available scripts and run relevant commands, for example:
+
+```bash
+npm --prefix frontend run lint
+npm --prefix frontend run typecheck
+npm --prefix frontend run build
 ```
 
 Do not claim a command passed unless it was actually executed successfully.
 
 If no `typecheck` script exists, use the correct project-specific command or report that the script is absent.
+
+Before claiming completion:
+
+1. Run the required tests or build.
+2. Review the diff.
+3. Run `git diff --check`.
+4. Confirm that no unrelated files changed.
+5. Update task status using real evidence.
+
+Task statuses:
+
+- `NOT_STARTED`
+- `IN_PROGRESS`
+- `BLOCKED`
+- `READY_FOR_REVIEW`
+- `DONE`
+
+Task status rules:
+
+- Use `READY_FOR_REVIEW` only after build and tests pass.
+- Use `DONE` only after the Pull Request is merged.
+- Never invent test results, commit hashes, or Pull Request URLs.
 
 ### Step 5: Report
 
@@ -786,6 +923,17 @@ After implementation, provide:
 6. Commands executed and their results.
 7. Manual test checklist.
 8. Assumptions or incomplete backend dependencies.
+
+Git safety:
+
+- Codex must not automatically commit.
+- Codex must not automatically push.
+- Codex must not automatically merge.
+- Codex must not automatically rebase.
+- Codex must not automatically force-push.
+- Codex must not automatically rewrite Git history.
+- Codex must not use `git add .`.
+- After completing a task, Codex must provide exact Git commands using specific file paths for the user to review and run manually.
 
 ---
 
