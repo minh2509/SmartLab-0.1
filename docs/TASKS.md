@@ -1,0 +1,97 @@
+# SmartLab Tasks
+
+## Status Values
+
+- `NOT_STARTED`: Work has not started.
+- `IN_PROGRESS`: Work is currently being implemented.
+- `BLOCKED`: Work cannot continue because of a specific blocker.
+- `READY_FOR_REVIEW`: Implementation is complete and build/tests pass.
+- `DONE`: The Pull Request has been merged.
+
+## Task Rules
+
+- Use `READY_FOR_REVIEW` only after build and tests pass.
+- Use `DONE` only after the Pull Request is merged.
+- Never invent test counts, commit hashes, or Pull Request URLs.
+- Keep scope, verification, and evidence aligned with actual work.
+- Do not mark a task complete based only on code generation.
+
+## ADM-000: Bootstrap Spring Boot Backend
+
+- Assignee: Minh
+- Status: `DONE`
+- Progress: 100%
+- Branch: `feature/backend-bootstrap`
+- Test result: 1 passed, 0 failures, 0 errors
+- Notes: Backend merged into main; `nodb` profile and actuator health verified.
+
+## ADM-007: Content Core Services
+
+- Assignee: Minh
+- Status: `NOT_STARTED`
+- Progress: 0%
+- Branch: `feature/minh-content-core`
+- Test result: Not run
+
+### Scope
+
+- `PostStatus`
+- `SlugService`
+- `PostWorkflowService`
+- `InvalidPostTransitionException`
+- Unit tests
+
+### Out Of Scope
+
+- Entity
+- Repository
+- Controller
+- API endpoints
+- Database migrations
+- Authentication integration
+- Frontend changes
+
+### Slug Acceptance Criteria
+
+- Reject null and blank input.
+- Return lowercase output.
+- Remove Vietnamese diacritics.
+- Convert `đ` and `Đ` to `d`.
+- Replace groups of spaces and special characters with one hyphen.
+- Remove leading and trailing hyphens.
+- Reject a result that becomes empty.
+- Support duplicate suffixes beginning with `-2`.
+
+### Workflow Statuses
+
+- `DRAFT`
+- `PENDING_REVIEW`
+- `NEEDS_REVISION`
+- `APPROVED`
+- `PUBLISHED`
+- `REJECTED`
+
+### Allowed Transitions
+
+- `DRAFT` -> `PENDING_REVIEW`
+- `PENDING_REVIEW` -> `APPROVED`
+- `PENDING_REVIEW` -> `NEEDS_REVISION`
+- `PENDING_REVIEW` -> `REJECTED`
+- `NEEDS_REVISION` -> `PENDING_REVIEW`
+- `APPROVED` -> `PUBLISHED`
+- `PUBLISHED` -> `APPROVED`
+
+### Workflow Rules
+
+- `PUBLISHED` -> `APPROVED` represents unpublishing.
+- `REJECTED` is terminal.
+- Null statuses are invalid.
+- Same-status transitions are invalid.
+- Invalid transitions throw `InvalidPostTransitionException`.
+
+### Required Test Command
+
+```bash
+cd backend
+SPRING_PROFILES_ACTIVE=nodb ./mvnw clean test
+```
