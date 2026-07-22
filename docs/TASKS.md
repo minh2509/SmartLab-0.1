@@ -234,9 +234,20 @@ SPRING_PROFILES_ACTIVE=nodb ./mvnw clean test
 
 - Name: Implement Admin user and role management REST API
 - Assignee: Minh
-- Status: `READY_FOR_REVIEW`
+- Status: `DONE`
 - Progress: 100%
 - Branch: `feature/minh-admin-user-role-api`
 - Test result: `126 tests run, 0 failures, 0 errors, 0 skipped; PostgreSQL schema validation, controller bean initialization, application startup, actuator health, authentication boundary, and JSON exception handling verified`
 - Scope: Admin user and role HTTP controllers, request/response DTOs, API mapper, exception handling, validation, and controller tests
-- Notes: Verified against PostgreSQL 18.4 with Flyway schema version 9. Unauthenticated API access returned HTTP 401, authenticated missing-user access returned JSON HTTP 404, and mutating requests remain protected by the current default Spring Security/CSRF configuration pending the security task.
+- Notes: PR #20 merged into `main`; 126 tests and PostgreSQL/API verification completed successfully.
+
+## BE-009: Implement database-backed Spring Security foundation
+
+- Name: Implement database-backed Spring Security foundation
+- Assignee: Minh
+- Status: `READY_FOR_REVIEW`
+- Progress: 100%
+- Branch: `feature/minh-security-foundation`
+- Test result: `144 tests run, 0 failures, 0 errors, 0 skipped; PostgreSQL 18.4 authentication, BCrypt compatibility, active role authorization, JSON 401/403, stateless behavior, REST CSRF policy, application startup, and actuator health verified`
+- Scope: Database-backed user authentication, BCrypt password verification, SmartLab principal, active role mapping, stateless HTTP Basic, REST CSRF policy, JSON 401/403, Admin authorization rules, nodb compatibility, and security tests
+- Notes: Manual verification completed with temporary ADMIN and MEMBER accounts. ADMIN access returned HTTP 200, MEMBER access returned JSON HTTP 403, incorrect credentials returned JSON HTTP 401, authenticated invalid POST returned JSON HTTP 400, no session cookie was created, and Spring Boot no longer generated a development password. JWT, login endpoints, refresh tokens, logout, CORS, login history, and frontend integration remain deferred.
