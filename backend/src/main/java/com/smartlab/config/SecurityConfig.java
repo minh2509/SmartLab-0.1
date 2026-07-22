@@ -16,6 +16,7 @@ import org.springframework.security.web.SecurityFilterChain;
 
 import com.smartlab.security.RestAccessDeniedHandler;
 import com.smartlab.security.RestAuthenticationEntryPoint;
+import com.smartlab.security.SecurityAuthorities;
 
 @Configuration
 public class SecurityConfig {
@@ -46,7 +47,8 @@ public class SecurityConfig {
 				.authenticationProvider(authenticationProvider)
 				.authorizeHttpRequests(authorize -> authorize
 						.requestMatchers(HttpMethod.GET, "/actuator/health", "/actuator/health/**").permitAll()
-						.requestMatchers("/api/admin/**").hasAnyRole("SUPER_ADMIN", "ADMIN")
+						.requestMatchers("/api/admin/**")
+						.hasAuthority(SecurityAuthorities.permission(SecurityAuthorities.ADMIN_ACCESS))
 						.requestMatchers("/api/**").authenticated()
 						.anyRequest().denyAll())
 				.build();

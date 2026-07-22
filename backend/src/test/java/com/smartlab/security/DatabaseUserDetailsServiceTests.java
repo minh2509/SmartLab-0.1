@@ -20,11 +20,14 @@ import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 
 import com.smartlab.entity.Lab;
+import com.smartlab.entity.Permission;
 import com.smartlab.entity.Role;
+import com.smartlab.entity.RolePermission;
 import com.smartlab.entity.User;
 import com.smartlab.entity.UserRole;
 import com.smartlab.enums.UserAccountStatus;
 import com.smartlab.enums.UserRoleStatus;
+import com.smartlab.repository.RolePermissionRepository;
 import com.smartlab.repository.UserRepository;
 import com.smartlab.repository.UserRoleRepository;
 
@@ -32,19 +35,25 @@ class DatabaseUserDetailsServiceTests {
 
 	private final UserRepository userRepository = mock(UserRepository.class);
 	private final UserRoleRepository userRoleRepository = mock(UserRoleRepository.class);
-	private final DatabaseUserDetailsService service = new DatabaseUserDetailsService(userRepository, userRoleRepository);
+	private final RolePermissionRepository rolePermissionRepository = mock(RolePermissionRepository.class);
+	private final DatabaseUserDetailsService service =
+			new DatabaseUserDetailsService(userRepository, userRoleRepository, rolePermissionRepository);
 
 	@Test
-	void loadUserNormalizesEmailAndMapsOnlyActiveRolesToPrefixedAuthorities() {
+	void loadUserNormalizesEmailAndMapsOnlyActiveRolesAndPermissionsToPrefixedAuthorities() {
 		User user = user(UserAccountStatus.ACTIVE, "minh@example.edu");
 		Role admin = role("ADMIN");
 		Role duplicateAdmin = role("ADMIN");
 		Role inactiveMember = role("MEMBER");
+		Permission adminAccess = permission("ADMIN_ACCESS");
+		Permission postCreate = permission("POST_CREATE");
 		when(userRepository.findByEmail("minh@example.edu")).thenReturn(List.of(user));
 		when(userRoleRepository.findByUserAndStatus(user, UserRoleStatus.ACTIVE))
 				.thenReturn(List.of(userRole(user, admin), userRole(user, duplicateAdmin)));
 		when(userRoleRepository.findByUserAndStatus(user, UserRoleStatus.INACTIVE))
 				.thenReturn(List.of(userRole(user, inactiveMember)));
+		when(rolePermissionRepository.findByRoleIn(List.of(admin, duplicateAdmin)))
+				.thenReturn(List.of(rolePermission(admin, adminAccess), rolePermission(duplicateAdmin, postCreate)));
 
 		SmartLabUserPrincipal principal =
 				(SmartLabUserPrincipal) service.loadUserByUsername("  Minh@Example.EDU ");
@@ -53,7 +62,7 @@ class DatabaseUserDetailsServiceTests {
 		assertEquals(user.getLab().getId(), principal.labId());
 		assertEquals("minh@example.edu", principal.email());
 		assertEquals("Full Name", principal.fullName());
-		assertEquals(Set.of("ROLE_ADMIN"), authorityNames(principal));
+		assertEquals(Set.of("ROLE_ADMIN", "PERMISSION_ADMIN_ACCESS", "PERMISSION_POST_CREATE"), authorityNames(principal));
 		assertFalse(authorityNames(principal).contains("ROLE_MEMBER"));
 		assertFalse(principal.toString().contains("encoded-password-hash"));
 		assertThrows(UnsupportedOperationException.class, () -> principal.getAuthorities().clear());
@@ -125,6 +134,15 @@ class DatabaseUserDetailsServiceTests {
 		return role;
 	}
 
+	private static Permission permission(String code) {
+		Permission permission = new Permission();
+		permission.setId(UUID.randomUUID());
+		permission.setCode(code);
+		permission.setName(code);
+		permission.setModule("TEST");
+		return permission;
+	}
+
 	private static UserRole userRole(User user, Role role) {
 		UserRole userRole = new UserRole();
 		userRole.setId(UUID.randomUUID());
@@ -132,5 +150,13 @@ class DatabaseUserDetailsServiceTests {
 		userRole.setRole(role);
 		userRole.setStatus(UserRoleStatus.ACTIVE);
 		return userRole;
+	}
+
+	private static RolePermission rolePermission(Role role, Permission permission) {
+		RolePermission rolePermission = new RolePermission();
+		rolePermission.setId(UUID.randomUUID());
+		rolePermission.setRole(role);
+		rolePermission.setPermission(permission);
+		return rolePermission;
 	}
 }

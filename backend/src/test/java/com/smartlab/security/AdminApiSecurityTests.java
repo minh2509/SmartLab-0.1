@@ -82,7 +82,7 @@ class AdminApiSecurityTests {
 	}
 
 	@Test
-	void adminRolesCanAccessAdminApi() throws Exception {
+	void usersWithAdminAccessPermissionCanAccessAdminApi() throws Exception {
 		mockMvc.perform(get("/api/admin/probe").with(httpBasic("super@example.edu", "password")))
 				.andExpect(status().isOk());
 		mockMvc.perform(get("/api/admin/probe").with(httpBasic("admin@example.edu", "password")))
@@ -90,8 +90,12 @@ class AdminApiSecurityTests {
 	}
 
 	@Test
-	void nonAdminRolesReceiveJsonForbidden() throws Exception {
-		for (String username : List.of("leader@example.edu", "member@example.edu", "noroles@example.edu")) {
+	void usersWithoutAdminAccessPermissionReceiveJsonForbidden() throws Exception {
+		for (String username : List.of(
+				"admin-role-only@example.edu",
+				"leader@example.edu",
+				"member@example.edu",
+				"noroles@example.edu")) {
 			mockMvc.perform(get("/api/admin/probe").with(httpBasic(username, "password")))
 					.andExpect(status().isForbidden())
 					.andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
@@ -199,10 +203,27 @@ class AdminApiSecurityTests {
 		UserDetailsService userDetailsService(PasswordEncoder passwordEncoder) {
 			String encodedPassword = passwordEncoder.encode("password");
 			return username -> switch (username) {
-				case "super@example.edu" -> principal(username, encodedPassword, "ROLE_SUPER_ADMIN");
-				case "admin@example.edu" -> principal(username, encodedPassword, "ROLE_ADMIN");
-				case "leader@example.edu" -> principal(username, encodedPassword, "ROLE_LEADER");
-				case "member@example.edu" -> principal(username, encodedPassword, "ROLE_MEMBER");
+				case "super@example.edu" -> principal(
+						username,
+						encodedPassword,
+						"ROLE_SUPER_ADMIN",
+						SecurityAuthorities.permission(SecurityAuthorities.ADMIN_ACCESS));
+				case "admin@example.edu" -> principal(
+						username,
+						encodedPassword,
+						"ROLE_ADMIN",
+						SecurityAuthorities.permission(SecurityAuthorities.ADMIN_ACCESS));
+				case "admin-role-only@example.edu" -> principal(username, encodedPassword, "ROLE_ADMIN");
+				case "leader@example.edu" -> principal(
+						username,
+						encodedPassword,
+						"ROLE_LEADER",
+						SecurityAuthorities.permission("POST_CREATE"));
+				case "member@example.edu" -> principal(
+						username,
+						encodedPassword,
+						"ROLE_MEMBER",
+						SecurityAuthorities.permission("POST_CREATE"));
 				case "noroles@example.edu" -> principal(username, encodedPassword);
 				default -> throw new UsernameNotFoundException("Authentication failed.");
 			};
