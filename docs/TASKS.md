@@ -223,9 +223,20 @@ SPRING_PROFILES_ACTIVE=nodb ./mvnw clean test
 
 - Name: Implement Admin user and role management service
 - Assignee: Minh
-- Status: `READY_FOR_REVIEW`
+- Status: `DONE`
 - Progress: 100%
 - Branch: `feature/minh-admin-user-role-service`
 - Test result: `114 tests run, 0 failures, 0 errors, 0 skipped; PostgreSQL schema validation, twenty-nine JPA repositories, service bean initialization, application startup, and actuator health verified`
 - Scope: Admin user lifecycle, account status, role assignment/revocation, lab-scope rules, protected administrator rules, repository support, and unit tests
-- Notes: Verified against PostgreSQL 18.4 with Flyway schema version 9; AdminUserService and AdminUserRoleService were initialized successfully, twenty-nine repository interfaces were detected, and `/actuator/health` returned HTTP 200.
+- Notes: PR #19 merged into `main`; PostgreSQL and application-context verification completed successfully.
+
+## BE-008: Implement Admin user and role management REST API
+
+- Name: Implement Admin user and role management REST API
+- Assignee: Minh
+- Status: `READY_FOR_REVIEW`
+- Progress: 100%
+- Branch: `feature/minh-admin-user-role-api`
+- Test result: `126 tests run, 0 failures, 0 errors, 0 skipped; PostgreSQL schema validation, controller bean initialization, application startup, actuator health, authentication boundary, and JSON exception handling verified`
+- Scope: Admin user and role HTTP controllers, request/response DTOs, API mapper, exception handling, validation, and controller tests
+- Notes: Verified against PostgreSQL 18.4 with Flyway schema version 9. Unauthenticated API access returned HTTP 401, authenticated missing-user access returned JSON HTTP 404, and mutating requests remain protected by the current default Spring Security/CSRF configuration pending the security task.
