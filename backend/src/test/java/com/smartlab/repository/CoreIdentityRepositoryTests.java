@@ -4,10 +4,13 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.lang.reflect.Method;
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import com.smartlab.entity.File;
@@ -17,6 +20,7 @@ import com.smartlab.entity.Role;
 import com.smartlab.entity.RolePermission;
 import com.smartlab.entity.User;
 import com.smartlab.entity.UserRole;
+import com.smartlab.enums.UserRoleStatus;
 
 class CoreIdentityRepositoryTests {
 
@@ -41,6 +45,12 @@ class CoreIdentityRepositoryTests {
 		assertReturnType(
 				UserRoleRepository.class.getMethod("existsByUserAndRole", User.class, Role.class),
 				boolean.class);
+		Method batchActiveRoles = UserRoleRepository.class.getMethod(
+				"findByUserInAndStatus",
+				Collection.class,
+				UserRoleStatus.class);
+		assertReturnType(batchActiveRoles, List.class);
+		assertEntityGraph(batchActiveRoles, "user", "role");
 		assertReturnType(
 				RolePermissionRepository.class.getMethod(
 						"existsByRoleAndPermission",
@@ -89,5 +99,11 @@ class CoreIdentityRepositoryTests {
 
 	private static void assertReturnType(Method method, Class<?> returnType) {
 		assertEquals(returnType, method.getReturnType());
+	}
+
+	private static void assertEntityGraph(Method method, String... attributePaths) {
+		EntityGraph entityGraph = method.getAnnotation(EntityGraph.class);
+		assertTrue(entityGraph != null);
+		assertEquals(List.of(attributePaths), List.of(entityGraph.attributePaths()));
 	}
 }

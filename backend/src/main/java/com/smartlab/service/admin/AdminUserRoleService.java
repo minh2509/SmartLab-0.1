@@ -10,33 +10,35 @@ import org.springframework.transaction.annotation.Transactional;
 import com.smartlab.entity.Role;
 import com.smartlab.entity.User;
 import com.smartlab.entity.UserRole;
-import com.smartlab.enums.UserAccountStatus;
 import com.smartlab.enums.UserRoleStatus;
+import com.smartlab.exception.ConflictingAdminOperationException;
 import com.smartlab.exception.DuplicateActiveRoleAssignmentException;
+import com.smartlab.exception.ForbiddenAdminOperationException;
 import com.smartlab.exception.InvalidAdminServiceInputException;
-import com.smartlab.exception.ProtectedAdministratorOperationException;
 import com.smartlab.exception.ResourceNotFoundException;
 import com.smartlab.repository.RoleRepository;
-import com.smartlab.repository.UserRepository;
 import com.smartlab.repository.UserRoleRepository;
 
 @Service
 @Profile("!nodb")
 public class AdminUserRoleService {
 
-	public static final String SUPER_ADMIN_ROLE_CODE = "SUPER_ADMIN";
+	public static final String SUPER_ADMIN_ROLE_CODE = AdminRolePolicy.SUPER_ADMIN_ROLE_CODE;
+	public static final String ADMIN_ROLE_CODE = AdminRolePolicy.ADMIN_ROLE_CODE;
+	public static final String LEADER_ROLE_CODE = AdminRolePolicy.LEADER_ROLE_CODE;
+	public static final String MEMBER_ROLE_CODE = AdminRolePolicy.MEMBER_ROLE_CODE;
 
-	private final UserRepository userRepository;
 	private final RoleRepository roleRepository;
 	private final UserRoleRepository userRoleRepository;
+	private final AdminRolePolicy rolePolicy;
 
 	public AdminUserRoleService(
-			UserRepository userRepository,
 			RoleRepository roleRepository,
-			UserRoleRepository userRoleRepository) {
-		this.userRepository = userRepository;
+			UserRoleRepository userRoleRepository,
+			AdminRolePolicy rolePolicy) {
 		this.roleRepository = roleRepository;
 		this.userRoleRepository = userRoleRepository;
+		this.rolePolicy = rolePolicy;
 	}
 
 	@Transactional
@@ -45,12 +47,15 @@ public class AdminUserRoleService {
 			throw new InvalidAdminServiceInputException("Assign user role command must not be null.");
 		}
 
-		User user = findUser(command.userId());
+		AdminRolePolicy.ActorContext actor = rolePolicy.requireAdminActor(command.actorUserId());
+		User user = rolePolicy.findUserInActorLab(actor, command.userId());
+		rolePolicy.assertCanMutateTarget(actor, user);
 		Role role = findRole(command.roleId());
-		User assignedBy = command.assignedByUserId() == null ? null : findUser(command.assignedByUserId());
+		List<String> roleCodes = List.of(role.getCode());
+		rolePolicy.assertAssignableRoleCodes(actor, roleCodes);
 		return userRoleRepository.findByUserAndRole(user, role)
-				.map(existing -> reactivateExistingAssignment(existing, assignedBy))
-				.orElseGet(() -> createAssignment(user, role, assignedBy));
+				.map(existing -> reactivateExistingAssignment(existing, actor.actor()))
+				.orElseGet(() -> createAssignment(user, role, actor.actor()));
 	}
 
 	@Transactional
@@ -59,20 +64,55 @@ public class AdminUserRoleService {
 			throw new InvalidAdminServiceInputException("Revoke user role command must not be null.");
 		}
 
-		User user = findUser(command.userId());
+		AdminRolePolicy.ActorContext actor = rolePolicy.requireAdminActor(command.actorUserId());
+		User user = rolePolicy.findUserInActorLab(actor, command.userId());
+		rolePolicy.assertCanMutateTarget(actor, user);
 		Role role = findRole(command.roleId());
+		if (SUPER_ADMIN_ROLE_CODE.equals(role.getCode())) {
+			throw new ForbiddenAdminOperationException("SUPER_ADMIN cannot be revoked through this API.");
+		}
 		UserRole assignment = userRoleRepository.findByUserAndRole(user, role)
 				.orElseThrow(() -> new ResourceNotFoundException("User role assignment was not found."));
 		if (assignment.getStatus() == UserRoleStatus.INACTIVE) {
 			return;
 		}
-		protectFinalActiveSuperAdmin(role);
+		List<UserRole> activeAssignments = userRoleRepository.findByUserAndStatus(user, UserRoleStatus.ACTIVE);
+		if (activeAssignments.size() <= 1) {
+			throw new ConflictingAdminOperationException("A managed user must retain at least one active role.");
+		}
 		assignment.setStatus(UserRoleStatus.INACTIVE);
 	}
 
+	@Transactional
+	public AdminUserService.ManagedUserSummary replaceRolesForUser(ReplaceUserRolesCommand command) {
+		if (command == null) {
+			throw new InvalidAdminServiceInputException("Replace user roles command must not be null.");
+		}
+
+		AdminRolePolicy.ActorContext actor = rolePolicy.requireAdminActor(command.actorUserId());
+		User user = rolePolicy.findUserInActorLab(actor, command.userId());
+		rolePolicy.assertCanMutateTarget(actor, user);
+		List<String> requestedRoleCodes = rolePolicy.normalizeRoleCodes(command.roleCodes());
+		rolePolicy.assertAssignableRoleCodes(actor, requestedRoleCodes);
+		List<Role> requestedRoles = rolePolicy.resolveRolesByCodes(requestedRoleCodes);
+
+		List<UserRole> activeAssignments = userRoleRepository.findByUserAndStatus(user, UserRoleStatus.ACTIVE);
+		for (UserRole activeAssignment : activeAssignments) {
+			String currentCode = activeAssignment.getRole().getCode();
+			if (!requestedRoleCodes.contains(currentCode)) {
+				activeAssignment.setStatus(UserRoleStatus.INACTIVE);
+			}
+		}
+		for (Role role : requestedRoles) {
+			activateRequestedRole(user, role, actor.actor());
+		}
+		return AdminUserService.ManagedUserSummary.from(user, requestedRoleCodes);
+	}
+
 	@Transactional(readOnly = true)
-	public List<AssignedRoleSummary> listActiveRolesForUser(UUID userId) {
-		User user = findUser(userId);
+	public List<AssignedRoleSummary> listActiveRolesForUser(UUID actorUserId, UUID userId) {
+		AdminRolePolicy.ActorContext actor = rolePolicy.requireAdminActor(actorUserId);
+		User user = rolePolicy.findUserInActorLab(actor, userId);
 		return userRoleRepository.findByUserAndStatus(user, UserRoleStatus.ACTIVE)
 				.stream()
 				.map(AssignedRoleSummary::from)
@@ -80,11 +120,15 @@ public class AdminUserRoleService {
 	}
 
 	@Transactional(readOnly = true)
-	public List<AssignedUserSummary> listActiveUsersForRole(UUID roleId) {
-		Role role = findRole(roleId);
-		return userRoleRepository.findByRoleAndStatus(role, UserRoleStatus.ACTIVE)
+	public List<RoleCatalogSummary> listRoleCatalog(UUID actorUserId) {
+		AdminRolePolicy.ActorContext actor = rolePolicy.requireAdminActor(actorUserId);
+		return rolePolicy.sortedSystemRoles()
 				.stream()
-				.map(AssignedUserSummary::from)
+				.map(role -> new RoleCatalogSummary(
+						role.getId(),
+						role.getCode(),
+						role.getName(),
+						rolePolicy.isRoleAssignable(actor, role.getCode())))
 				.toList();
 	}
 
@@ -98,33 +142,39 @@ public class AdminUserRoleService {
 	}
 
 	private AssignedRoleSummary createAssignment(User user, Role role, User assignedBy) {
-		UserRole assignment = new UserRole();
-		assignment.setUser(user);
-		assignment.setRole(role);
+		UserRole assignment = newAssignment(user, role);
 		assignment.setAssignedBy(assignedBy);
 		assignment.setStatus(UserRoleStatus.ACTIVE);
 		return AssignedRoleSummary.from(userRoleRepository.save(assignment));
 	}
 
-	private void protectFinalActiveSuperAdmin(Role role) {
-		if (!SUPER_ADMIN_ROLE_CODE.equals(role.getCode())) {
-			return;
-		}
-		long activeSuperAdmins = userRoleRepository.countByRoleAndStatusAndUserAccountStatus(
-				role,
-				UserRoleStatus.ACTIVE,
-				UserAccountStatus.ACTIVE);
-		if (activeSuperAdmins <= 1) {
-			throw new ProtectedAdministratorOperationException("Cannot revoke the final active SUPER_ADMIN assignment.");
-		}
+	private void activateRequestedRole(User user, Role role, User assignedBy) {
+		userRoleRepository.findByUserAndRole(user, role)
+				.ifPresentOrElse(
+						assignment -> reactivateForReplacement(assignment, assignedBy),
+						() -> createReplacementAssignment(user, role, assignedBy));
 	}
 
-	private User findUser(UUID userId) {
-		if (userId == null) {
-			throw new InvalidAdminServiceInputException("User ID must not be null.");
+	private void reactivateForReplacement(UserRole assignment, User assignedBy) {
+		if (assignment.getStatus() == UserRoleStatus.ACTIVE) {
+			return;
 		}
-		return userRepository.findById(userId)
-				.orElseThrow(() -> new ResourceNotFoundException("User was not found."));
+		assignment.setStatus(UserRoleStatus.ACTIVE);
+		assignment.setAssignedBy(assignedBy);
+	}
+
+	private void createReplacementAssignment(User user, Role role, User assignedBy) {
+		UserRole assignment = newAssignment(user, role);
+		assignment.setAssignedBy(assignedBy);
+		assignment.setStatus(UserRoleStatus.ACTIVE);
+		userRoleRepository.save(assignment);
+	}
+
+	private static UserRole newAssignment(User user, Role role) {
+		UserRole assignment = new UserRole();
+		assignment.setUser(user);
+		assignment.setRole(role);
+		return assignment;
 	}
 
 	private Role findRole(UUID roleId) {
@@ -135,10 +185,13 @@ public class AdminUserRoleService {
 				.orElseThrow(() -> new ResourceNotFoundException("Role was not found."));
 	}
 
-	public record AssignUserRoleCommand(UUID userId, UUID roleId, UUID assignedByUserId) {
+	public record AssignUserRoleCommand(UUID actorUserId, UUID userId, UUID roleId) {
 	}
 
-	public record RevokeUserRoleCommand(UUID userId, UUID roleId) {
+	public record RevokeUserRoleCommand(UUID actorUserId, UUID userId, UUID roleId) {
+	}
+
+	public record ReplaceUserRolesCommand(UUID actorUserId, UUID userId, List<String> roleCodes) {
 	}
 
 	public record AssignedRoleSummary(
@@ -159,24 +212,10 @@ public class AdminUserRoleService {
 		}
 	}
 
-	public record AssignedUserSummary(
-			UUID assignmentId,
-			UUID userId,
-			UUID labId,
-			String username,
-			String email,
-			String fullName) {
-
-		static AssignedUserSummary from(UserRole userRole) {
-			User user = userRole.getUser();
-			UUID labId = user.getLab() == null ? null : user.getLab().getId();
-			return new AssignedUserSummary(
-					userRole.getId(),
-					user.getId(),
-					labId,
-					user.getUsername(),
-					user.getEmail(),
-					user.getFullName());
-		}
+	public record RoleCatalogSummary(
+			UUID roleId,
+			String code,
+			String name,
+			boolean assignable) {
 	}
 }

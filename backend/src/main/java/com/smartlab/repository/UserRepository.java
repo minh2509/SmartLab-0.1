@@ -16,6 +16,8 @@ public interface UserRepository extends JpaRepository<User, UUID> {
 
 	Optional<User> findByLabAndEmail(Lab lab, String email);
 
+	Optional<User> findByIdAndLab(UUID id, Lab lab);
+
 	List<User> findByEmail(String email);
 
 	boolean existsByLabAndUsername(Lab lab, String username);
@@ -31,4 +33,6 @@ public interface UserRepository extends JpaRepository<User, UUID> {
 	List<User> findByAccountStatus(UserAccountStatus accountStatus);
 
 	List<User> findByLabAndAccountStatus(Lab lab, UserAccountStatus accountStatus);
+
+	List<User> findByLabAndAccountStatusNot(Lab lab, UserAccountStatus accountStatus);
 }

@@ -28,6 +28,7 @@ public class ApiExceptionHandler {
 	}
 
 	@ExceptionHandler({
+			ConflictingAdminOperationException.class,
 			DuplicateActiveRoleAssignmentException.class,
 			DuplicateUserEmailException.class,
 			DuplicateUsernameException.class,
@@ -41,6 +42,13 @@ public class ApiExceptionHandler {
 			InvalidAdminServiceInputException exception,
 			HttpServletRequest request) {
 		return error(HttpStatus.BAD_REQUEST, exception.getMessage(), request);
+	}
+
+	@ExceptionHandler(ForbiddenAdminOperationException.class)
+	public ResponseEntity<ApiErrorResponse> handleForbiddenAdminOperation(
+			ForbiddenAdminOperationException exception,
+			HttpServletRequest request) {
+		return error(HttpStatus.FORBIDDEN, exception.getMessage(), request);
 	}
 
 	@ExceptionHandler(AuthenticationException.class)

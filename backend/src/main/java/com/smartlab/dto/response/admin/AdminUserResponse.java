@@ -1,5 +1,6 @@
 package com.smartlab.dto.response.admin;
 
+import java.util.List;
 import java.util.UUID;
 
 import com.smartlab.enums.UserAccountStatus;
@@ -11,5 +12,6 @@ public record AdminUserResponse(
 		String email,
 		String fullName,
 		UUID avatarFileId,
-		UserAccountStatus accountStatus) {
+		UserAccountStatus accountStatus,
+		List<String> roleCodes) {
 }
