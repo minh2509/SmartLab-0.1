@@ -12,7 +12,9 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.smartlab.dto.request.admin.CreateAdminUserRequest;
+import com.smartlab.dto.request.admin.ReplaceUserRolesRequest;
 import com.smartlab.dto.request.admin.UpdateAdminUserRequest;
+import com.smartlab.dto.response.admin.AdminRoleCatalogResponse;
 import com.smartlab.dto.response.admin.AdminRoleResponse;
 import com.smartlab.dto.response.admin.AdminUserResponse;
 import com.smartlab.dto.response.admin.AdminUserRoleResponse;
@@ -22,15 +24,22 @@ class AdminApiStructureTests {
 	@Test
 	void controllersAreRestAdaptersWithoutRepositoryDependenciesAndInactiveInNodb() {
 		assertControllerBoundary(AdminUserController.class);
+		assertControllerBoundary(AdminRoleController.class);
 		assertControllerBoundary(AdminUserRoleController.class);
 	}
 
 	@Test
-	void requestAndResponseDtosDoNotExposePlaintextPasswordsOrPasswordHashesInResponses() {
-		assertTrue(hasRecordComponent(CreateAdminUserRequest.class, "passwordHash"));
+	void requestAndResponseDtosKeepCredentialBoundaryAndRoleCodesExplicit() {
+		assertTrue(hasRecordComponent(CreateAdminUserRequest.class, "temporaryPassword"));
+		assertTrue(hasRecordComponent(CreateAdminUserRequest.class, "roleCodes"));
+		assertFalse(hasRecordComponent(CreateAdminUserRequest.class, "passwordHash"));
+		assertFalse(hasRecordComponent(CreateAdminUserRequest.class, "labId"));
 		assertFalse(hasRecordComponent(CreateAdminUserRequest.class, "password"));
-		assertFalse(hasRecordComponent(UpdateAdminUserRequest.class, "password"));
+		assertTrue(hasRecordComponent(ReplaceUserRolesRequest.class, "roleCodes"));
+		assertTrue(hasRecordComponent(AdminUserResponse.class, "roleCodes"));
+		assertFalse(hasFieldOrRecordComponent(UpdateAdminUserRequest.class, "password"));
 		assertNoCredentialComponent(AdminUserResponse.class);
+		assertNoCredentialComponent(AdminRoleCatalogResponse.class);
 		assertNoCredentialComponent(AdminRoleResponse.class);
 		assertNoCredentialComponent(AdminUserRoleResponse.class);
 	}
@@ -48,6 +57,14 @@ class AdminApiStructureTests {
 	private static boolean hasRecordComponent(Class<?> recordType, String componentName) {
 		return Arrays.stream(recordType.getRecordComponents())
 				.anyMatch(component -> component.getName().equals(componentName));
+	}
+
+	private static boolean hasFieldOrRecordComponent(Class<?> type, String componentName) {
+		if (type.isRecord()) {
+			return hasRecordComponent(type, componentName);
+		}
+		return Arrays.stream(type.getDeclaredFields())
+				.anyMatch(field -> field.getName().equals(componentName));
 	}
 
 	private static void assertNoCredentialComponent(Class<?> recordType) {

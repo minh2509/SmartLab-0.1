@@ -2,6 +2,7 @@ package com.smartlab.mapper;
 
 import org.springframework.stereotype.Component;
 
+import com.smartlab.dto.response.admin.AdminRoleCatalogResponse;
 import com.smartlab.dto.response.admin.AdminRoleResponse;
 import com.smartlab.dto.response.admin.AdminUserResponse;
 import com.smartlab.dto.response.admin.AdminUserRoleResponse;
@@ -19,7 +20,8 @@ public class AdminUserApiMapper {
 				summary.email(),
 				summary.fullName(),
 				summary.avatarFileId(),
-				summary.accountStatus());
+				summary.accountStatus(),
+				summary.roleCodes());
 	}
 
 	public AdminUserRoleResponse toUserRoleResponse(AdminUserRoleService.AssignedRoleSummary summary) {
@@ -38,5 +40,13 @@ public class AdminUserApiMapper {
 				summary.roleCode(),
 				summary.roleName(),
 				summary.status());
+	}
+
+	public AdminRoleCatalogResponse toRoleCatalogResponse(AdminUserRoleService.RoleCatalogSummary summary) {
+		return new AdminRoleCatalogResponse(
+				summary.roleId(),
+				summary.code(),
+				summary.name(),
+				summary.assignable());
 	}
 }

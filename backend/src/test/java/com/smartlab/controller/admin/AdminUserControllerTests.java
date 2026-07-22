@@ -3,6 +3,7 @@ package com.smartlab.controller.admin;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -17,7 +18,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
@@ -32,119 +32,143 @@ import com.smartlab.exception.ApiExceptionHandler;
 import com.smartlab.exception.DuplicateUserEmailException;
 import com.smartlab.exception.ResourceNotFoundException;
 import com.smartlab.mapper.AdminUserApiMapper;
+import com.smartlab.security.AuthenticatedActorResolver;
 import com.smartlab.service.admin.AdminUserService;
 
 class AdminUserControllerTests {
 
 	private final AdminUserService adminUserService = mock(AdminUserService.class);
+	private final AuthenticatedActorResolver actorResolver = mock(AuthenticatedActorResolver.class);
 	private final MockMvc mockMvc = MockMvcBuilders
-			.standaloneSetup(new AdminUserController(adminUserService, new AdminUserApiMapper()))
+			.standaloneSetup(new AdminUserController(adminUserService, new AdminUserApiMapper(), actorResolver))
 			.setControllerAdvice(new ApiExceptionHandler())
 			.setValidator(validator())
 			.build();
 
 	@Test
-	void createUserReturnsCreatedResponseWithoutPasswordHash() throws Exception {
+	void createUserAcceptsTemporaryPasswordRoleCodesAndReturnsActiveRolesWithoutCredentials() throws Exception {
+		UUID actorUserId = UUID.randomUUID();
 		UUID userId = UUID.randomUUID();
 		UUID labId = UUID.randomUUID();
+		when(actorResolver.requireActorUserId()).thenReturn(actorUserId);
 		when(adminUserService.createManagedUser(any(AdminUserService.CreateManagedUserCommand.class)))
-				.thenReturn(userSummary(userId, labId, "minh", "minh@example.edu", UserAccountStatus.ACTIVE));
+				.thenReturn(userSummary(
+						userId,
+						labId,
+						"minh",
+						"minh@example.edu",
+						UserAccountStatus.ACTIVE,
+						List.of("MEMBER")));
 
 		mockMvc.perform(post("/api/admin/users")
 						.contentType(MediaType.APPLICATION_JSON)
 						.content("""
 								{
-								  "labId": "%s",
 								  "username": "minh",
 								  "email": "Minh@Example.EDU",
-								  "passwordHash": "derived-password-hash",
-								  "fullName": "Minh Hoang"
+								  "temporaryPassword": "TemporaryPass123!",
+								  "fullName": "Minh Hoang",
+								  "avatarFileId": null,
+								  "roleCodes": [" member ", "MEMBER"]
 								}
-								""".formatted(labId)))
+								"""))
 				.andExpect(status().isCreated())
 				.andExpect(header().string("Location", "/api/admin/users/" + userId))
 				.andExpect(jsonPath("$.id").value(userId.toString()))
+				.andExpect(jsonPath("$.labId").value(labId.toString()))
 				.andExpect(jsonPath("$.email").value("minh@example.edu"))
+				.andExpect(jsonPath("$.roleCodes[0]").value("MEMBER"))
 				.andExpect(jsonPath("$.passwordHash").doesNotExist())
-				.andExpect(content().string(not(containsString("derived-password-hash"))));
+				.andExpect(jsonPath("$.temporaryPassword").doesNotExist())
+				.andExpect(content().string(not(containsString("TemporaryPass123!"))));
 
 		ArgumentCaptor<AdminUserService.CreateManagedUserCommand> captor =
 				ArgumentCaptor.forClass(AdminUserService.CreateManagedUserCommand.class);
 		verify(adminUserService).createManagedUser(captor.capture());
-		assertEquals(labId, captor.getValue().labId());
-		assertEquals("derived-password-hash", captor.getValue().passwordHash());
+		assertEquals(actorUserId, captor.getValue().actorUserId());
+		assertEquals("TemporaryPass123!", captor.getValue().temporaryPassword());
+		assertEquals(List.of(" member ", "MEMBER"), captor.getValue().roleCodes());
 	}
 
 	@Test
-	void createUserValidationFailureDoesNotEchoPasswordHashOrCallService() throws Exception {
+	void createUserRejectsPasswordHashContractAndValidationDoesNotEchoPassword() throws Exception {
+		when(actorResolver.requireActorUserId()).thenReturn(UUID.randomUUID());
+
 		mockMvc.perform(post("/api/admin/users")
 						.contentType(MediaType.APPLICATION_JSON)
 						.content("""
 								{
-								  "labId": "%s",
 								  "username": "minh",
 								  "email": "not-an-email",
-								  "passwordHash": "",
-								  "fullName": "Minh Hoang"
+								  "passwordHash": "caller-supplied-hash",
+								  "temporaryPassword": "TemporaryPass123!",
+								  "fullName": "Minh Hoang",
+								  "roleCodes": []
 								}
-								""".formatted(UUID.randomUUID())))
+								"""))
 				.andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.message").value("Request validation failed."))
-				.andExpect(content().string(not(containsString("passwordHash"))));
+				.andExpect(content().string(not(containsString("caller-supplied-hash"))))
+				.andExpect(content().string(not(containsString("TemporaryPass123!"))))
+				.andExpect(content().string(not(containsString("temporaryPassword"))));
 
 		verify(adminUserService, never()).createManagedUser(any());
 	}
 
 	@Test
-	void getUserAndFindByEmailMapMissingUserToNotFound() throws Exception {
+	void getUserAndFindByEmailUseActorScopedServiceAndMapMissingUserToNotFound() throws Exception {
+		UUID actorUserId = UUID.randomUUID();
 		UUID userId = UUID.randomUUID();
-		UUID labId = UUID.randomUUID();
-		when(adminUserService.findUserById(userId)).thenReturn(Optional.empty());
-		when(adminUserService.findUserByLabAndEmail(labId, "missing@example.edu")).thenReturn(Optional.empty());
+		when(actorResolver.requireActorUserId()).thenReturn(actorUserId);
+		when(adminUserService.findUserById(actorUserId, userId))
+				.thenThrow(new ResourceNotFoundException("User was not found."));
+		when(adminUserService.findUserByEmail(actorUserId, "missing@example.edu"))
+				.thenThrow(new ResourceNotFoundException("User was not found."));
 
 		mockMvc.perform(get("/api/admin/users/{userId}", userId))
 				.andExpect(status().isNotFound())
 				.andExpect(jsonPath("$.message").value("User was not found."));
 		mockMvc.perform(get("/api/admin/users/by-email")
-						.param("labId", labId.toString())
 						.param("email", "missing@example.edu"))
 				.andExpect(status().isNotFound())
 				.andExpect(jsonPath("$.message").value("User was not found."));
 	}
 
 	@Test
-	void listUsersSupportsServiceBackedFiltersOnly() throws Exception {
+	void listUsersIsActorLabScopedAndDoesNotRequireLabId() throws Exception {
+		UUID actorUserId = UUID.randomUUID();
 		UUID labId = UUID.randomUUID();
-		when(adminUserService.listUsersByLabAndAccountStatus(labId, UserAccountStatus.ACTIVE))
-				.thenReturn(List.of(userSummary(UUID.randomUUID(), labId, "active", "active@example.edu", UserAccountStatus.ACTIVE)));
-		when(adminUserService.listUsersByLab(labId)).thenReturn(List.of());
-		when(adminUserService.listUsersByAccountStatus(UserAccountStatus.LOCKED)).thenReturn(List.of());
+		when(actorResolver.requireActorUserId()).thenReturn(actorUserId);
+		when(adminUserService.listUsers(actorUserId, null))
+				.thenReturn(List.of(userSummary(
+						UUID.randomUUID(),
+						labId,
+						"member",
+						"member@example.edu",
+						UserAccountStatus.ACTIVE,
+						List.of("LEADER", "MEMBER"))));
+		when(adminUserService.listUsers(actorUserId, UserAccountStatus.LOCKED)).thenReturn(List.of());
 
-		mockMvc.perform(get("/api/admin/users")
-						.param("labId", labId.toString())
-						.param("status", "ACTIVE"))
+		mockMvc.perform(get("/api/admin/users"))
 				.andExpect(status().isOk())
-				.andExpect(jsonPath("$[0].accountStatus").value("ACTIVE"));
-		mockMvc.perform(get("/api/admin/users").param("labId", labId.toString()))
-				.andExpect(status().isOk())
-				.andExpect(jsonPath("$").isArray());
+				.andExpect(jsonPath("$[0].roleCodes[0]").value("LEADER"))
+				.andExpect(jsonPath("$[0].roleCodes[1]").value("MEMBER"));
 		mockMvc.perform(get("/api/admin/users").param("status", "LOCKED"))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$").isArray());
-		mockMvc.perform(get("/api/admin/users"))
-				.andExpect(status().isBadRequest())
-				.andExpect(jsonPath("$.message").value("At least one user filter must be provided."));
 	}
 
 	@Test
-	void updateAndStatusEndpointsMapOnlyAllowedCommands() throws Exception {
+	void updateAndStatusEndpointsPassActorIdentityAndAllowedCommands() throws Exception {
+		UUID actorUserId = UUID.randomUUID();
 		UUID userId = UUID.randomUUID();
 		UUID avatarId = UUID.randomUUID();
 		UUID labId = UUID.randomUUID();
+		when(actorResolver.requireActorUserId()).thenReturn(actorUserId);
 		when(adminUserService.updateManagedUser(any(AdminUserService.UpdateManagedUserCommand.class)))
-				.thenReturn(userSummary(userId, labId, "newname", "new@example.edu", UserAccountStatus.ACTIVE));
-		when(adminUserService.changeAccountStatus(userId, UserAccountStatus.LOCKED))
-				.thenReturn(userSummary(userId, labId, "newname", "new@example.edu", UserAccountStatus.LOCKED));
+				.thenReturn(userSummary(userId, labId, "newname", "new@example.edu", UserAccountStatus.ACTIVE, List.of("MEMBER")));
+		when(adminUserService.changeAccountStatus(any(AdminUserService.ChangeAccountStatusCommand.class)))
+				.thenReturn(userSummary(userId, labId, "newname", "new@example.edu", UserAccountStatus.LOCKED, List.of("MEMBER")));
 
 		mockMvc.perform(patch("/api/admin/users/{userId}", userId)
 						.contentType(MediaType.APPLICATION_JSON)
@@ -158,7 +182,8 @@ class AdminUserControllerTests {
 								}
 								""".formatted(avatarId)))
 				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.username").value("newname"));
+				.andExpect(jsonPath("$.username").value("newname"))
+				.andExpect(jsonPath("$.roleCodes[0]").value("MEMBER"));
 		mockMvc.perform(patch("/api/admin/users/{userId}/status", userId)
 						.contentType(MediaType.APPLICATION_JSON)
 						.content("""
@@ -170,13 +195,129 @@ class AdminUserControllerTests {
 		ArgumentCaptor<AdminUserService.UpdateManagedUserCommand> updateCaptor =
 				ArgumentCaptor.forClass(AdminUserService.UpdateManagedUserCommand.class);
 		verify(adminUserService).updateManagedUser(updateCaptor.capture());
+		assertEquals(actorUserId, updateCaptor.getValue().actorUserId());
 		assertEquals(userId, updateCaptor.getValue().userId());
 		assertEquals(avatarId, updateCaptor.getValue().avatarFileId());
+		ArgumentCaptor<AdminUserService.ChangeAccountStatusCommand> statusCaptor =
+				ArgumentCaptor.forClass(AdminUserService.ChangeAccountStatusCommand.class);
+		verify(adminUserService).changeAccountStatus(statusCaptor.capture());
+		assertEquals(actorUserId, statusCaptor.getValue().actorUserId());
+	}
+
+	@Test
+	void partialEmailPatchReachesServiceAndReturnsDuplicateEmailConflict() throws Exception {
+		UUID actorUserId = UUID.randomUUID();
+		UUID userId = UUID.randomUUID();
+		when(actorResolver.requireActorUserId()).thenReturn(actorUserId);
+		when(adminUserService.updateManagedUser(any(AdminUserService.UpdateManagedUserCommand.class)))
+				.thenThrow(new DuplicateUserEmailException("User email already exists in the lab."));
+
+		mockMvc.perform(patch("/api/admin/users/{userId}", userId)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{"email":"taken@example.edu"}
+								"""))
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.message").value("User email already exists in the lab."));
+
+		ArgumentCaptor<AdminUserService.UpdateManagedUserCommand> captor =
+				ArgumentCaptor.forClass(AdminUserService.UpdateManagedUserCommand.class);
+		verify(adminUserService).updateManagedUser(captor.capture());
+		assertEquals(actorUserId, captor.getValue().actorUserId());
+		assertEquals(userId, captor.getValue().userId());
+		assertNull(captor.getValue().username());
+		assertEquals("taken@example.edu", captor.getValue().email());
+		assertNull(captor.getValue().fullName());
+		assertNull(captor.getValue().avatarFileId());
+		assertEquals(false, captor.getValue().clearAvatarFile());
+	}
+
+	@Test
+	void partialFullNamePatchDefaultsOtherFieldsToOmitted() throws Exception {
+		UUID actorUserId = UUID.randomUUID();
+		UUID userId = UUID.randomUUID();
+		UUID labId = UUID.randomUUID();
+		when(actorResolver.requireActorUserId()).thenReturn(actorUserId);
+		when(adminUserService.updateManagedUser(any(AdminUserService.UpdateManagedUserCommand.class)))
+				.thenReturn(userSummary(userId, labId, "member", "member@example.edu", UserAccountStatus.ACTIVE, List.of("MEMBER")));
+
+		mockMvc.perform(patch("/api/admin/users/{userId}", userId)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{"fullName":"Updated Name"}
+								"""))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.id").value(userId.toString()));
+
+		ArgumentCaptor<AdminUserService.UpdateManagedUserCommand> captor =
+				ArgumentCaptor.forClass(AdminUserService.UpdateManagedUserCommand.class);
+		verify(adminUserService).updateManagedUser(captor.capture());
+		assertNull(captor.getValue().username());
+		assertNull(captor.getValue().email());
+		assertEquals("Updated Name", captor.getValue().fullName());
+		assertNull(captor.getValue().avatarFileId());
+		assertEquals(false, captor.getValue().clearAvatarFile());
+	}
+
+	@Test
+	void clearAvatarPatchSupportsSingleBooleanField() throws Exception {
+		UUID actorUserId = UUID.randomUUID();
+		UUID userId = UUID.randomUUID();
+		UUID labId = UUID.randomUUID();
+		when(actorResolver.requireActorUserId()).thenReturn(actorUserId);
+		when(adminUserService.updateManagedUser(any(AdminUserService.UpdateManagedUserCommand.class)))
+				.thenReturn(userSummary(userId, labId, "member", "member@example.edu", UserAccountStatus.ACTIVE, List.of("MEMBER")));
+
+		mockMvc.perform(patch("/api/admin/users/{userId}", userId)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{"clearAvatarFile":true}
+								"""))
+				.andExpect(status().isOk());
+
+		ArgumentCaptor<AdminUserService.UpdateManagedUserCommand> captor =
+				ArgumentCaptor.forClass(AdminUserService.UpdateManagedUserCommand.class);
+		verify(adminUserService).updateManagedUser(captor.capture());
+		assertEquals(true, captor.getValue().clearAvatarFile());
+	}
+
+	@Test
+	void invalidSuppliedEmailReturnsBadRequestWithoutCallingService() throws Exception {
+		when(actorResolver.requireActorUserId()).thenReturn(UUID.randomUUID());
+
+		mockMvc.perform(patch("/api/admin/users/{userId}", UUID.randomUUID())
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{"email":"not-an-email"}
+								"""))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.message").value("Request validation failed."));
+
+		verify(adminUserService, never()).updateManagedUser(any());
+	}
+
+	@Test
+	void unknownPasswordHashPatchFieldReturnsBadRequestWithoutEchoingValueOrCallingService() throws Exception {
+		when(actorResolver.requireActorUserId()).thenReturn(UUID.randomUUID());
+
+		mockMvc.perform(patch("/api/admin/users/{userId}", UUID.randomUUID())
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "fullName": "Updated Name",
+								  "passwordHash": "caller-supplied-hash"
+								}
+								"""))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.message").value("Request validation failed."))
+				.andExpect(content().string(not(containsString("caller-supplied-hash"))));
+
+		verify(adminUserService, never()).updateManagedUser(any());
 	}
 
 	@Test
 	void duplicateEmailUsesGlobalExceptionHandlerConflictMapping() throws Exception {
-		UUID labId = UUID.randomUUID();
+		when(actorResolver.requireActorUserId()).thenReturn(UUID.randomUUID());
 		when(adminUserService.createManagedUser(any(AdminUserService.CreateManagedUserCommand.class)))
 				.thenThrow(new DuplicateUserEmailException("User email already exists in the lab."));
 
@@ -184,13 +325,13 @@ class AdminUserControllerTests {
 						.contentType(MediaType.APPLICATION_JSON)
 						.content("""
 								{
-								  "labId": "%s",
 								  "username": "minh",
 								  "email": "minh@example.edu",
-								  "passwordHash": "derived-password-hash",
-								  "fullName": "Minh Hoang"
+								  "temporaryPassword": "TemporaryPass123!",
+								  "fullName": "Minh Hoang",
+								  "roleCodes": ["MEMBER"]
 								}
-								""".formatted(labId)))
+								"""))
 				.andExpect(status().isConflict())
 				.andExpect(jsonPath("$.message").value("User email already exists in the lab."));
 	}
@@ -206,7 +347,8 @@ class AdminUserControllerTests {
 			UUID labId,
 			String username,
 			String email,
-			UserAccountStatus status) {
+			UserAccountStatus status,
+			List<String> roleCodes) {
 		return new AdminUserService.ManagedUserSummary(
 				id,
 				labId,
@@ -214,6 +356,7 @@ class AdminUserControllerTests {
 				email,
 				"Full Name",
 				null,
-				status);
+				status,
+				roleCodes);
 	}
 }

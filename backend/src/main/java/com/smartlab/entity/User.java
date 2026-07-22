@@ -174,14 +174,15 @@ public class User {
 		if (this == other) {
 			return true;
 		}
-		if (!(other instanceof User user) || id == null) {
+		UUID currentId = getId();
+		if (!(other instanceof User user) || currentId == null) {
 			return false;
 		}
-		return id.equals(user.id);
+		return currentId.equals(user.getId());
 	}
 
 	@Override
 	public int hashCode() {
-		return getClass().hashCode();
+		return User.class.hashCode();
 	}
 }

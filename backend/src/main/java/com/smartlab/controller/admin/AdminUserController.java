@@ -20,9 +20,8 @@ import com.smartlab.dto.request.admin.CreateAdminUserRequest;
 import com.smartlab.dto.request.admin.UpdateAdminUserRequest;
 import com.smartlab.dto.response.admin.AdminUserResponse;
 import com.smartlab.enums.UserAccountStatus;
-import com.smartlab.exception.InvalidAdminServiceInputException;
-import com.smartlab.exception.ResourceNotFoundException;
 import com.smartlab.mapper.AdminUserApiMapper;
+import com.smartlab.security.AuthenticatedActorResolver;
 import com.smartlab.service.admin.AdminUserService;
 
 import jakarta.validation.Valid;
@@ -34,22 +33,29 @@ public class AdminUserController {
 
 	private final AdminUserService adminUserService;
 	private final AdminUserApiMapper mapper;
+	private final AuthenticatedActorResolver actorResolver;
 
-	public AdminUserController(AdminUserService adminUserService, AdminUserApiMapper mapper) {
+	public AdminUserController(
+			AdminUserService adminUserService,
+			AdminUserApiMapper mapper,
+			AuthenticatedActorResolver actorResolver) {
 		this.adminUserService = adminUserService;
 		this.mapper = mapper;
+		this.actorResolver = actorResolver;
 	}
 
 	@PostMapping
 	public ResponseEntity<AdminUserResponse> createUser(@Valid @RequestBody CreateAdminUserRequest request) {
+		UUID actorUserId = actorResolver.requireActorUserId();
 		AdminUserService.ManagedUserSummary created = adminUserService.createManagedUser(
 				new AdminUserService.CreateManagedUserCommand(
-						request.labId(),
+						actorUserId,
 						request.username(),
 						request.email(),
-						request.passwordHash(),
+						request.temporaryPassword(),
 						request.fullName(),
-						request.avatarFileId()));
+						request.avatarFileId(),
+						request.roleCodes()));
 		return ResponseEntity
 				.created(URI.create("/api/admin/users/" + created.id()))
 				.body(mapper.toUserResponse(created));
@@ -57,37 +63,22 @@ public class AdminUserController {
 
 	@GetMapping("/{userId}")
 	public AdminUserResponse getUser(@PathVariable UUID userId) {
-		return adminUserService.findUserById(userId)
-				.map(mapper::toUserResponse)
-				.orElseThrow(() -> new ResourceNotFoundException("User was not found."));
+		return mapper.toUserResponse(adminUserService.findUserById(actorResolver.requireActorUserId(), userId));
 	}
 
 	@GetMapping("/by-email")
 	public AdminUserResponse findUserByEmail(
-			@RequestParam UUID labId,
 			@RequestParam String email) {
-		return adminUserService.findUserByLabAndEmail(labId, email)
-				.map(mapper::toUserResponse)
-				.orElseThrow(() -> new ResourceNotFoundException("User was not found."));
+		return mapper.toUserResponse(adminUserService.findUserByEmail(actorResolver.requireActorUserId(), email));
 	}
 
 	@GetMapping
 	public List<AdminUserResponse> listUsers(
-			@RequestParam(required = false) UUID labId,
 			@RequestParam(required = false) UserAccountStatus status) {
-		if (labId != null && status != null) {
-			return adminUserService.listUsersByLabAndAccountStatus(labId, status)
-					.stream()
-					.map(mapper::toUserResponse)
-					.toList();
-		}
-		if (labId != null) {
-			return adminUserService.listUsersByLab(labId).stream().map(mapper::toUserResponse).toList();
-		}
-		if (status != null) {
-			return adminUserService.listUsersByAccountStatus(status).stream().map(mapper::toUserResponse).toList();
-		}
-		throw new InvalidAdminServiceInputException("At least one user filter must be provided.");
+		return adminUserService.listUsers(actorResolver.requireActorUserId(), status)
+				.stream()
+				.map(mapper::toUserResponse)
+				.toList();
 	}
 
 	@PatchMapping("/{userId}")
@@ -96,6 +87,7 @@ public class AdminUserController {
 			@Valid @RequestBody UpdateAdminUserRequest request) {
 		return mapper.toUserResponse(adminUserService.updateManagedUser(
 				new AdminUserService.UpdateManagedUserCommand(
+						actorResolver.requireActorUserId(),
 						userId,
 						request.username(),
 						request.email(),
@@ -108,6 +100,10 @@ public class AdminUserController {
 	public AdminUserResponse changeUserStatus(
 			@PathVariable UUID userId,
 			@Valid @RequestBody ChangeUserStatusRequest request) {
-		return mapper.toUserResponse(adminUserService.changeAccountStatus(userId, request.status()));
+		return mapper.toUserResponse(adminUserService.changeAccountStatus(
+				new AdminUserService.ChangeAccountStatusCommand(
+						actorResolver.requireActorUserId(),
+						userId,
+						request.status())));
 	}
 }

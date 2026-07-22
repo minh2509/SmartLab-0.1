@@ -118,8 +118,33 @@ class CoreIdentityEntityMappingTests {
 
 	@Test
 	void equalityIsSafeForTransientEntities() {
-		assertFalse(new Lab().equals(new Lab()));
-		assertEquals(new Lab().hashCode(), new Lab().hashCode());
+		Lab transientLab = new Lab();
+		User transientUser = new User();
+		assertFalse(transientLab.equals(new Lab()));
+		assertFalse(transientUser.equals(new User()));
+		assertEquals(transientLab, transientLab);
+		assertEquals(transientUser, transientUser);
+		assertEquals(Lab.class.hashCode(), transientLab.hashCode());
+		assertEquals(User.class.hashCode(), transientUser.hashCode());
+	}
+
+	@Test
+	void equalityUsesGetterBasedUuidIdentifiers() {
+		UUID labId = UUID.randomUUID();
+		Lab firstLab = new Lab();
+		firstLab.setId(labId);
+		Lab secondLab = new Lab();
+		secondLab.setId(labId);
+		UUID userId = UUID.randomUUID();
+		User firstUser = new User();
+		firstUser.setId(userId);
+		User secondUser = new User();
+		secondUser.setId(userId);
+
+		assertEquals(firstLab, secondLab);
+		assertEquals(firstLab.hashCode(), secondLab.hashCode());
+		assertEquals(firstUser, secondUser);
+		assertEquals(firstUser.hashCode(), secondUser.hashCode());
 	}
 
 	@Test

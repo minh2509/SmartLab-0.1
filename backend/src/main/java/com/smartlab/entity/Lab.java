@@ -173,14 +173,15 @@ public class Lab {
 		if (this == other) {
 			return true;
 		}
-		if (!(other instanceof Lab lab) || id == null) {
+		UUID currentId = getId();
+		if (!(other instanceof Lab lab) || currentId == null) {
 			return false;
 		}
-		return id.equals(lab.id);
+		return currentId.equals(lab.getId());
 	}
 
 	@Override
 	public int hashCode() {
-		return getClass().hashCode();
+		return Lab.class.hashCode();
 	}
 }
