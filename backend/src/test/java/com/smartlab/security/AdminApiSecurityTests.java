@@ -67,6 +67,15 @@ class AdminApiSecurityTests {
 	}
 
 	@Test
+	void swaggerEndpointsArePublic() throws Exception {
+		mockMvc.perform(get("/v3/api-docs"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.openapi").value("3.1.0"));
+		mockMvc.perform(get("/swagger-ui/index.html"))
+				.andExpect(status().isOk());
+	}
+
+	@Test
 	void unauthenticatedAdminApiRequestReturnsJsonUnauthorized() throws Exception {
 		mockMvc.perform(get("/api/admin/probe"))
 				.andExpect(status().isUnauthorized())
@@ -163,6 +172,16 @@ class AdminApiSecurityTests {
 		@GetMapping("/actuator/health")
 		Map<String, String> health() {
 			return Map.of("status", "UP");
+		}
+
+		@GetMapping("/v3/api-docs")
+		Map<String, String> apiDocs() {
+			return Map.of("openapi", "3.1.0");
+		}
+
+		@GetMapping("/swagger-ui/index.html")
+		String swaggerUi() {
+			return "swagger-ui";
 		}
 
 		@GetMapping("/api/admin/probe")
