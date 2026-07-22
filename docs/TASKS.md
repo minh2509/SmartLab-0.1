@@ -252,6 +252,17 @@ SPRING_PROFILES_ACTIVE=nodb ./mvnw clean test
 - Scope: Database-backed user authentication, BCrypt password verification, SmartLab principal, active role mapping, stateless HTTP Basic, REST CSRF policy, JSON 401/403, Admin authorization rules, nodb compatibility, and security tests
 - Notes: Manual verification completed with temporary ADMIN and MEMBER accounts. ADMIN access returned HTTP 200, MEMBER access returned JSON HTTP 403, incorrect credentials returned JSON HTTP 401, authenticated invalid POST returned JSON HTTP 400, no session cookie was created, and Spring Boot no longer generated a development password. JWT, login endpoints, refresh tokens, logout, CORS, login history, and frontend integration remain deferred.
 
+## ADM-002 to ADM-003: Standardize Admin errors and seed bootstrap Admin
+
+- Name: Standardize Admin error responses and seed bootstrap Admin account
+- Assignee: Tuan Dat
+- Status: `READY_FOR_REVIEW`
+- Progress: 100%
+- Branch: `main`
+- Test result: `167 tests run, 0 failures, 0 errors, 0 skipped; BUILD SUCCESS`
+- Scope: Shared API error response factory, post workflow exception-to-HTTP mapping, initial SmartLab lab seed, initial Admin user seed, active SUPER_ADMIN/ADMIN role assignment, and structural tests
+- Notes: Success responses intentionally remain DTO/list/page shaped for compatibility with existing controller tests and clients. Bootstrap password is stored as a BCrypt hash for the demo password `smart2026`; change it after first local login.
+
 ## ADM-024 to ADM-026: Implement Admin audit and login history read APIs
 
 - Name: Implement Admin audit and login history read APIs

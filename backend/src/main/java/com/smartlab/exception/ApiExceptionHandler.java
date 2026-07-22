@@ -1,7 +1,5 @@
 package com.smartlab.exception;
 
-import java.time.OffsetDateTime;
-
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -42,6 +40,13 @@ public class ApiExceptionHandler {
 		return error(HttpStatus.BAD_REQUEST, exception.getMessage(), request);
 	}
 
+	@ExceptionHandler(InvalidPostTransitionException.class)
+	public ResponseEntity<ApiErrorResponse> handleInvalidPostTransition(
+			InvalidPostTransitionException exception,
+			HttpServletRequest request) {
+		return error(HttpStatus.BAD_REQUEST, exception.getMessage(), request);
+	}
+
 	@ExceptionHandler({
 			ConstraintViolationException.class,
 			HttpMessageNotReadableException.class,
@@ -58,11 +63,6 @@ public class ApiExceptionHandler {
 			HttpServletRequest request) {
 		return ResponseEntity
 				.status(status)
-				.body(new ApiErrorResponse(
-						OffsetDateTime.now(),
-						status.value(),
-						status.getReasonPhrase(),
-						message,
-						request.getRequestURI()));
+				.body(ApiErrorResponse.of(status, message, request.getRequestURI()));
 	}
 }
