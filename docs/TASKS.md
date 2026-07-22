@@ -112,9 +112,21 @@ SPRING_PROFILES_ACTIVE=nodb ./mvnw clean test
 
 - Name: Prepare the PostgreSQL migration plan and schema cleanup specification
 - Assignee: Minh
-- Status: `READY_FOR_REVIEW`
+- Status: `DONE`
 - Progress: 100%
 - Branch: `chore/db-migration-plan`
 - Test result: Not applicable; documentation planning only
 - Scope: Migration planning and schema cleanup specification only
 - Notes: Created `docs/database/DB-002-migration-plan.md` using approved owner decisions; no migration SQL files were created.
+- Notes: PR was merged into `main`.
+
+## DB-003A: Configure Local PostgreSQL Datasource
+
+- Name: Configure local PostgreSQL datasource
+- Assignee: Minh
+- Status: `READY_FOR_REVIEW`
+- Progress: 100%
+- Branch: `chore/db-local-config`
+- Test result: `30 tests run, 0 failures, 0 errors, 0 skipped; local PostgreSQL connection and actuator health verified`
+- Scope: Spring datasource profile, environment example, and run documentation only
+- Notes: Added the local datasource profile and environment documentation; verified Hikari, Flyway, JPA, PostgreSQL 18.4, and `/actuator/health`.
