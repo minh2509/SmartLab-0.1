@@ -43,8 +43,8 @@ class SecurityStructuralTests {
 		List<Path> javaFiles;
 		try (Stream<Path> files = Files.walk(Path.of("src/main/java/com/smartlab"))) {
 			javaFiles = files.filter(path -> path.toString().endsWith(".java"))
-					.filter(path -> !path.toString().contains("/repository/"))
-					.filter(path -> !path.toString().contains("/entity/"))
+					.filter(path -> !path.toString().replace('\\', '/').contains("/repository/"))
+					.filter(path -> !path.toString().replace('\\', '/').contains("/entity/"))
 					.toList();
 		}
 		String allMainJava = javaFiles.stream()
@@ -59,8 +59,6 @@ class SecurityStructuralTests {
 		assertFalse(allMainJava.contains("@PostMapping(\"/logout\")"));
 		assertFalse(allMainJava.contains("@DeleteMapping(\"/logout\")"));
 		assertFalse(allMainJava.contains("LoginHistoryRepository"));
-		assertFalse(allMainJava.contains("AuditLogRepository"));
-		assertFalse(allMainJava.contains("NotificationRepository"));
 		assertFalse(allMainJava.contains("setLastLoginAt"));
 		assertFalse(allMainJava.contains("io.jsonwebtoken"));
 		assertFalse(allMainJava.contains("com.auth0.jwt"));

@@ -264,3 +264,41 @@ SPRING_PROFILES_ACTIVE=nodb ./mvnw clean test
 - Scope: Login API, current-user API, HS256 JWT issuing and validation, Bearer authentication, role claims, JSON authentication failures, stateless security, `nodb` compatibility, and tests
 - Notes: PR #22 was merged into `main`.
 - Notes: Manual verification completed with temporary ADMIN and MEMBER accounts. Health returned HTTP 200; ADMIN and MEMBER login returned HTTP 200 with Bearer access tokens; ADMIN access to the Admin API returned HTTP 200; MEMBER access returned JSON HTTP 403; `/api/auth/me` returned the authenticated user; incorrect password, tampered token, and HTTP Basic authentication returned JSON HTTP 401; authenticated invalid POST returned JSON HTTP 400; no session cookie was created. Temporary users and lab were removed successfully. Refresh tokens, logout persistence, token revocation, CORS, login history, password reset, and frontend integration remain deferred.
+
+## Admin Observability and Workflow Integration — Đới Đạt
+
+- Assignee: Đới Đạt
+- Branch: `feature/admin-observability-join-event`
+- Test result: `210 tests run, 0 failures, 0 errors, 0 skipped; BUILD SUCCESS` with Java 21 and `SPRING_PROFILES_ACTIVE=nodb`
+- API contract evidence: Postman collection JSON parsed successfully; controller contract, validation, pagination, error mapping, JWT claim mapping, and response-safety tests passed.
+
+| Task | Scope | Status | Progress |
+| --- | --- | --- | --- |
+| ADM-008 | Shared Admin audit write service | `READY_FOR_REVIEW` | 100% |
+| ADM-009 | Shared user/project/lab notification service | `READY_FOR_REVIEW` | 100% |
+| ADM-010 | Admin Postman collection and executable API contract tests | `READY_FOR_REVIEW` | 100% |
+| ADM-075 | Lab-scoped Admin dashboard KPI and recent activity API | `READY_FOR_REVIEW` | 100% |
+| ADM-076 | Filtered and paginated project join-request list API | `READY_FOR_REVIEW` | 100% |
+| ADM-077 | Project join-request detail API with safe CV metadata | `READY_FOR_REVIEW` | 100% |
+| ADM-078 | Feature-flagged Admin join-request approval override | `READY_FOR_REVIEW` | 100% |
+| ADM-079 | Feature-flagged Admin join-request rejection override | `READY_FOR_REVIEW` | 100% |
+| ADM-080 | Filtered and paginated Admin notification list API | `READY_FOR_REVIEW` | 100% |
+| ADM-081 | Notification detail and recipient/read summary API | `READY_FOR_REVIEW` | 100% |
+| ADM-082 | Manual USER/PROJECT/LAB notification creation API | `READY_FOR_REVIEW` | 100% |
+| ADM-083 | Non-destructive global notification hide operation | `READY_FOR_REVIEW` | 100% |
+| ADM-084 | Event list API | `NOT_STARTED` | 0% |
+| ADM-085 | Event creation API | `NOT_STARTED` | 0% |
+| ADM-086 | Event detail API | `NOT_STARTED` | 0% |
+| ADM-087 | Event update API | `NOT_STARTED` | 0% |
+| ADM-088 | Event cancellation API | `NOT_STARTED` | 0% |
+| ADM-089 | Event participant list API | `NOT_STARTED` | 0% |
+
+### Review Notes
+
+- All operational Admin APIs remain protected by the existing `SUPER_ADMIN`/`ADMIN` JWT rule and are scoped to the authenticated `lab_id`.
+- Frontend Admin integration now uses the live JWT APIs for `/app/dashboard`, the Admin mode of `/app/join-requests`, and the new `/app/admin/notifications` management route.
+- Member/Leader join-request flows and the personal notification center remain on the existing `localStorage` demo stores because recipient and Member/Leader workflow APIs are outside this task scope.
+- Join-request override defaults to disabled. Enable it explicitly with `SMARTLAB_ADMIN_JOIN_REQUEST_OVERRIDE_ENABLED=true` after the optional Admin override policy is approved.
+- Approval returns `409` when any project-membership record already exists; it does not invent a reactivation rule for `LEFT` or `REMOVED` memberships.
+- ADM-083 hides a notification for every recipient through `notification_recipients.deleted_at`. It does not hard-delete the notification or its audit history and does not require a schema migration.
+- ADM-084 through ADM-089 remain deferred because the approved Flyway schema has no `events` or `event_participants` tables yet and the workbook places them in Phase 2 after MVP.

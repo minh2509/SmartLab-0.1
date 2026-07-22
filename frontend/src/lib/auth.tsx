@@ -8,7 +8,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { apiRequest } from "@/lib/api-client";
+import { apiRequest, AUTH_UNAUTHORIZED_EVENT } from "@/lib/api-client";
 import { roleLabel, type Role, type UserAccount } from "@/lib/users-data";
 
 export { roleLabel, type Role, type UserAccount };
@@ -16,6 +16,7 @@ export { roleLabel, type Role, type UserAccount };
 type AuthContextValue = {
   user: UserAccount | null;
   activeRole: Role | null;
+  accessToken: string | null;
   ready: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => void;
@@ -221,6 +222,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    const handleUnauthorized = (event: Event) => {
+      if (!(event instanceof CustomEvent) || event.detail !== session?.accessToken) return;
+      clearAuthState(setSession, setUser);
+    };
+    window.addEventListener(AUTH_UNAUTHORIZED_EVENT, handleUnauthorized);
+    return () => window.removeEventListener(AUTH_UNAUTHORIZED_EVENT, handleUnauthorized);
+  }, [session?.accessToken]);
+
+  useEffect(() => {
     let mounted = true;
 
     async function restore() {
@@ -314,6 +324,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return {
       user,
       activeRole,
+      accessToken: session?.accessToken ?? null,
       ready,
       signIn,
       signOut,

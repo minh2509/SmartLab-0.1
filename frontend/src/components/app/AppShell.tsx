@@ -8,6 +8,7 @@ import {
   FolderKanban,
   FileText,
   Bell,
+  BellRing,
   LogOut,
   ChevronDown,
   ShieldCheck,
@@ -27,6 +28,7 @@ type AppNavPath =
   | "/app/posts"
   | "/app/moderation/posts"
   | "/app/admin/users"
+  | "/app/admin/notifications"
   | "/app/notifications";
 
 type NavItem = {
@@ -90,6 +92,12 @@ const NAV: NavItem[] = [
     to: "/app/notifications",
     icon: Bell,
     roles: ["admin", "leader", "member"],
+  },
+  {
+    label: "System Notifications",
+    to: "/app/admin/notifications",
+    icon: BellRing,
+    roles: ["admin"],
   },
   {
     label: "Administration",

@@ -78,6 +78,15 @@ SERVER_PORT
 DB_URL
 DB_USERNAME
 DB_PASSWORD
+SMARTLAB_JWT_SECRET_BASE64
+SMARTLAB_JWT_ACCESS_TTL_SECONDS
+SMARTLAB_ADMIN_JOIN_REQUEST_OVERRIDE_ENABLED
 ```
+
+`SMARTLAB_ADMIN_JOIN_REQUEST_OVERRIDE_ENABLED` defaults to `false`. Set it to `true` only when Admins are allowed to approve or reject project join requests as an override.
+
+## Admin API smoke collection
+
+Import `postman/SmartLab-Admin-API.postman_collection.json` into Postman, set the Admin login variables, and run the folders in order against the local PostgreSQL profile. The login request stores the Bearer token and lab/user identifiers for the remaining Admin requests.
 
 Do not commit real database credentials.

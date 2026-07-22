@@ -12,6 +12,8 @@ spring:
     open-in-view: false
 
 smartlab:
+  admin:
+    join-request-override-enabled: ${SMARTLAB_ADMIN_JOIN_REQUEST_OVERRIDE_ENABLED:false}
   jwt:
     secret-base64: ${SMARTLAB_JWT_SECRET_BASE64}
     access-ttl-seconds: ${SMARTLAB_JWT_ACCESS_TTL_SECONDS:900}

@@ -1,0 +1,511 @@
+{
+  "info": {
+    "_postman_id": "2480f6ca-29a8-4f52-9722-44a845fa4e5c",
+    "name": "SmartLab Admin Operational API",
+    "description": "Executable contract collection for SmartLab authentication and the Admin operational APIs owned by the observability/workflow module: dashboard, project join requests, and system notifications. Run the backend with the local database profile (these Admin controllers are intentionally disabled under `nodb`), set `adminEmail` and `adminPassword`, then run **Login Admin** before protected requests. Mutation requests are intended for a disposable local/test database. Approve and reject require separate pending join-request IDs and SMARTLAB_ADMIN_JOIN_REQUEST_OVERRIDE_ENABLED=true; keep joinRequestOverrideEnabled aligned with that environment flag. User/role management is intentionally excluded because it is maintained under a separate API contract.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "event": [
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "const requestUrl = pm.request.url.toString();",
+          "const isLoginRequest = requestUrl.includes(\"/api/auth/login\");",
+          "const isJoinOverrideRequest = requestUrl.includes(\"/project-join-requests/\") && (requestUrl.endsWith(\"/approve\") || requestUrl.endsWith(\"/reject\"));",
+          "const joinOverrideEnabled = pm.collectionVariables.get(\"joinRequestOverrideEnabled\") === \"true\";",
+          "if (!isLoginRequest) {",
+          "    pm.test(\"Bearer token is configured\", function () {",
+          "        pm.expect(pm.collectionVariables.get(\"accessToken\"), \"Run Login Admin first\").to.be.a(\"string\").and.not.empty;",
+          "    });",
+          "    pm.test(\"Authentication and Admin authorization succeeded\", function () {",
+          "        pm.expect(pm.response.code).to.not.eql(401);",
+          "        if (!(isJoinOverrideRequest && !joinOverrideEnabled)) { pm.expect(pm.response.code).to.not.eql(403); }",
+          "    });",
+          "}"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "Authentication",
+      "description": "Obtains and verifies the Bearer access token used by every Admin request.",
+      "item": [
+        {
+          "name": "Login Admin",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": "{{baseUrl}}/api/auth/login",
+            "description": "Authenticates a database-backed ADMIN or SUPER_ADMIN account and stores its JWT and scoped IDs as collection variables.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{adminPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test(\"Login response has token and user schema\", function () {",
+                  "    pm.expect(body).to.include.all.keys(\"tokenType\", \"accessToken\", \"expiresIn\", \"issuedAt\", \"expiresAt\", \"user\");",
+                  "    pm.expect(body.tokenType).to.eql(\"Bearer\");",
+                  "    pm.expect(body.accessToken).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(body.user).to.include.all.keys(\"id\", \"labId\", \"email\", \"fullName\", \"accountStatus\", \"roles\");",
+                  "    pm.expect(body.user.roles).to.be.an(\"array\");",
+                  "    pm.expect(body.user.roles.some(function (role) { return role === \"ADMIN\" || role === \"SUPER_ADMIN\"; }), \"Account must have an Admin role\").to.be.true;",
+                  "});",
+                  "if (pm.response.code === 200 && body.accessToken) {",
+                  "    pm.collectionVariables.set(\"accessToken\", body.accessToken);",
+                  "    pm.collectionVariables.set(\"adminUserId\", body.user.id);",
+                  "    pm.collectionVariables.set(\"labId\", body.user.labId);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Current User",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/auth/me",
+            "description": "Verifies the stored Bearer token and current authenticated-user contract."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test(\"Current-user response has the expected schema\", function () {",
+                  "    pm.expect(body).to.include.all.keys(\"id\", \"labId\", \"email\", \"fullName\", \"accountStatus\", \"roles\");",
+                  "    pm.expect(body.roles).to.be.an(\"array\");",
+                  "    pm.expect(body.id).to.eql(pm.collectionVariables.get(\"adminUserId\"));",
+                  "    pm.expect(body.labId).to.eql(pm.collectionVariables.get(\"labId\"));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Admin Dashboard",
+      "item": [
+        {
+          "name": "Get Dashboard Summary",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/admin/dashboard?recentLimit=10",
+            "description": "Reads lab-scoped counts and recent audit activity."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test(\"Response has dashboard count and activity schema\", function () {",
+                  "    pm.expect(body).to.include.all.keys(\"users\", \"projects\", \"posts\", \"joinRequests\", \"tasks\", \"recentActivities\");",
+                  "    pm.expect(body.users).to.be.a(\"number\");",
+                  "    pm.expect(body.projects).to.be.a(\"number\");",
+                  "    pm.expect(body.recentActivities).to.be.an(\"array\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Admin Project Join Requests",
+      "description": "The list request captures the first pending ID as `joinRequestId`. Approve and reject are separate state-changing examples and require two independently supplied pending IDs.",
+      "item": [
+        {
+          "name": "List Pending Join Requests",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/admin/project-join-requests?status=PENDING&page=0&size=20",
+            "description": "Lists a page of pending requests and captures the first result for the detail request."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test(\"Response has the page schema\", function () {",
+                  "    pm.expect(body).to.include.all.keys(\"content\", \"page\", \"size\", \"totalElements\", \"totalPages\");",
+                  "    pm.expect(body.content).to.be.an(\"array\");",
+                  "    if (body.content.length > 0) {",
+                  "        pm.expect(body.content[0]).to.include.all.keys(\"id\", \"project\", \"requester\", \"status\", \"createdAt\", \"updatedAt\");",
+                  "    }",
+                  "});",
+                  "if (body.content.length > 0 && !pm.collectionVariables.get(\"joinRequestId\")) {",
+                  "    pm.collectionVariables.set(\"joinRequestId\", body.content[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Join Request Detail",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/admin/project-join-requests/{{joinRequestId}}",
+            "description": "Uses the ID captured by the list request, or a manually supplied scoped request ID."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test(\"Response has the join-request schema\", function () {",
+                  "    pm.expect(body).to.be.an(\"object\");",
+                  "    pm.expect(body).to.include.all.keys(\"id\", \"project\", \"requester\", \"status\", \"createdAt\", \"updatedAt\");",
+                  "    pm.expect(body.project).to.include.all.keys(\"id\", \"code\", \"name\", \"slug\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Approve Join Request",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": "{{baseUrl}}/api/admin/project-join-requests/{{approveJoinRequestId}}/approve",
+            "description": "State-changing example. Supply an existing PENDING request ID scoped to the Admin's lab."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const overrideEnabled = pm.collectionVariables.get(\"joinRequestOverrideEnabled\") === \"true\";",
+                  "pm.test(\"Status matches the override feature flag\", function () { pm.expect(pm.response.code).to.eql(overrideEnabled ? 200 : 403); });",
+                  "const body = pm.response.json();",
+                  "if (overrideEnabled) { pm.test(\"Response has the join-request schema\", function () {",
+                  "    pm.expect(body).to.be.an(\"object\");",
+                  "    pm.expect(body).to.include.all.keys(\"id\", \"project\", \"requester\", \"status\", \"createdAt\", \"updatedAt\");",
+                  "    pm.expect(body.project).to.include.all.keys(\"id\", \"code\", \"name\", \"slug\");",
+                  "});",
+                  "pm.test(\"Join request status is APPROVED\", function () {",
+                  "    pm.expect(body.status).to.eql(\"APPROVED\");",
+                  "}); } else { pm.test(\"Disabled override returns the standard error schema\", function () {",
+                  "    pm.expect(body).to.include.all.keys(\"timestamp\", \"status\", \"error\", \"message\", \"path\");",
+                  "    pm.expect(body.message).to.eql(\"Admin join-request override is disabled.\");",
+                  "}); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reject Join Request",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": "{{baseUrl}}/api/admin/project-join-requests/{{rejectJoinRequestId}}/reject",
+            "description": "State-changing example. Supply a different existing PENDING request ID scoped to the Admin's lab.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Rejected by the Postman contract smoke run.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const overrideEnabled = pm.collectionVariables.get(\"joinRequestOverrideEnabled\") === \"true\";",
+                  "pm.test(\"Status matches the override feature flag\", function () { pm.expect(pm.response.code).to.eql(overrideEnabled ? 200 : 403); });",
+                  "const body = pm.response.json();",
+                  "if (overrideEnabled) { pm.test(\"Response has the join-request schema\", function () {",
+                  "    pm.expect(body).to.be.an(\"object\");",
+                  "    pm.expect(body).to.include.all.keys(\"id\", \"project\", \"requester\", \"status\", \"createdAt\", \"updatedAt\");",
+                  "    pm.expect(body.project).to.include.all.keys(\"id\", \"code\", \"name\", \"slug\");",
+                  "});",
+                  "pm.test(\"Join request status is REJECTED\", function () {",
+                  "    pm.expect(body.status).to.eql(\"REJECTED\");",
+                  "}); } else { pm.test(\"Disabled override returns the standard error schema\", function () {",
+                  "    pm.expect(body).to.include.all.keys(\"timestamp\", \"status\", \"error\", \"message\", \"path\");",
+                  "    pm.expect(body.message).to.eql(\"Admin join-request override is disabled.\");",
+                  "}); }"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Admin Notifications",
+      "description": "Creates a lab-wide smoke notification, reads it through list/detail routes, then hides it through the current soft-delete behavior.",
+      "item": [
+        {
+          "name": "Create Lab Notification",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": "{{baseUrl}}/api/admin/notifications",
+            "description": "Creates a lab-scoped smoke notification and stores `notificationId` for subsequent requests.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"{{notificationTitle}}\",\n  \"message\": \"Generated by the SmartLab Admin API Postman collection.\",\n  \"notificationType\": \"ADMIN_SMOKE_TEST\",\n  \"targetType\": \"LAB\",\n  \"userIds\": [],\n  \"projectId\": null,\n  \"relatedType\": null,\n  \"relatedId\": null,\n  \"linkUrl\": \"/app/notifications\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"notificationTitle\", \"Postman smoke \" + new Date().toISOString());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 201\", function () { pm.response.to.have.status(201); });",
+                  "const body = pm.response.json();",
+                  "pm.test(\"Response has the notification-detail schema\", function () {",
+                  "    pm.expect(body).to.be.an(\"object\");",
+                  "    pm.expect(body).to.include.all.keys(\"id\", \"title\", \"notificationType\", \"recipientCount\", \"readCount\", \"createdAt\", \"recipients\");",
+                  "    pm.expect(body.recipients).to.be.an(\"array\");",
+                  "});",
+                  "if (pm.response.code === 201 && body.id) {",
+                  "    pm.collectionVariables.set(\"notificationId\", body.id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List Notifications",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/admin/notifications?notificationType=ADMIN_SMOKE_TEST&page=0&size=20",
+            "description": "Lists the smoke notification through the paged, lab-scoped query."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test(\"Response has the notification page schema\", function () {",
+                  "    pm.expect(body).to.include.all.keys(\"content\", \"page\", \"size\", \"totalElements\", \"totalPages\");",
+                  "    pm.expect(body.content).to.be.an(\"array\");",
+                  "    if (body.content.length > 0) {",
+                  "        pm.expect(body.content[0]).to.include.all.keys(\"id\", \"title\", \"notificationType\", \"recipientCount\", \"readCount\", \"createdAt\");",
+                  "    }",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Notification Detail",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/admin/notifications/{{notificationId}}",
+            "description": "Reads the notification created earlier in this folder."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test(\"Response has the notification-detail schema\", function () {",
+                  "    pm.expect(body).to.be.an(\"object\");",
+                  "    pm.expect(body).to.include.all.keys(\"id\", \"title\", \"notificationType\", \"recipientCount\", \"readCount\", \"createdAt\", \"recipients\");",
+                  "    pm.expect(body.recipients).to.be.an(\"array\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Hide Notification",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{baseUrl}}/api/admin/notifications/{{notificationId}}",
+            "description": "Hides the notification for its active recipients and returns no content."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 204\", function () { pm.response.to.have.status(204); });",
+                  "pm.test(\"Response body is empty\", function () { pm.expect(pm.response.text()).to.eql(\"\"); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080",
+      "type": "string"
+    },
+    {
+      "key": "adminEmail",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "adminPassword",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "accessToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "labId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "adminUserId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "joinRequestId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "approveJoinRequestId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "rejectJoinRequestId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "joinRequestOverrideEnabled",
+      "value": "false",
+      "type": "string"
+    },
+    {
+      "key": "notificationId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "notificationTitle",
+      "value": "",
+      "type": "string"
+    }
+  ]
+}

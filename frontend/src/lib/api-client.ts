@@ -12,6 +12,8 @@ export class ApiError extends Error {
   }
 }
 
+export const AUTH_UNAUTHORIZED_EVENT = "smartlab:auth-unauthorized";
+
 type ApiRequestOptions = {
   method?: string;
   token?: string;
@@ -75,6 +77,11 @@ export async function apiRequest(path: string, options: ApiRequestOptions = {}):
 
   const body = await readJsonSafely(response);
   if (!response.ok) {
+    if (response.status === 401 && options.token && typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent<string>(AUTH_UNAUTHORIZED_EVENT, { detail: options.token }),
+      );
+    }
     throw new ApiError(
       messageFromBody(body, "The request could not be completed."),
       response.status,

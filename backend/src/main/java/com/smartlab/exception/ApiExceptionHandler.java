@@ -32,14 +32,22 @@ public class ApiExceptionHandler {
 			DuplicateActiveRoleAssignmentException.class,
 			DuplicateUserEmailException.class,
 			DuplicateUsernameException.class,
+			InvalidAdminWorkflowStateException.class,
 			ProtectedAdministratorOperationException.class})
 	public ResponseEntity<ApiErrorResponse> handleConflict(RuntimeException exception, HttpServletRequest request) {
 		return error(HttpStatus.CONFLICT, exception.getMessage(), request);
 	}
 
-	@ExceptionHandler(InvalidAdminServiceInputException.class)
+	@ExceptionHandler(AdminFeatureDisabledException.class)
+	public ResponseEntity<ApiErrorResponse> handleFeatureDisabled(
+			AdminFeatureDisabledException exception,
+			HttpServletRequest request) {
+		return error(HttpStatus.FORBIDDEN, exception.getMessage(), request);
+	}
+
+	@ExceptionHandler({InvalidAdminServiceInputException.class, IllegalArgumentException.class})
 	public ResponseEntity<ApiErrorResponse> handleInvalidServiceInput(
-			InvalidAdminServiceInputException exception,
+			RuntimeException exception,
 			HttpServletRequest request) {
 		return error(HttpStatus.BAD_REQUEST, exception.getMessage(), request);
 	}
