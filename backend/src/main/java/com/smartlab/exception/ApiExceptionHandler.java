@@ -4,6 +4,7 @@ import java.time.OffsetDateTime;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
@@ -40,6 +41,13 @@ public class ApiExceptionHandler {
 			InvalidAdminServiceInputException exception,
 			HttpServletRequest request) {
 		return error(HttpStatus.BAD_REQUEST, exception.getMessage(), request);
+	}
+
+	@ExceptionHandler(AuthenticationException.class)
+	public ResponseEntity<ApiErrorResponse> handleAuthenticationFailure(
+			AuthenticationException exception,
+			HttpServletRequest request) {
+		return error(HttpStatus.UNAUTHORIZED, "Invalid email or password.", request);
 	}
 
 	@ExceptionHandler({
