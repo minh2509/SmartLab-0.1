@@ -10,3 +10,8 @@ spring:
     hibernate:
       ddl-auto: validate
     open-in-view: false
+
+smartlab:
+  jwt:
+    secret-base64: ${SMARTLAB_JWT_SECRET_BASE64}
+    access-ttl-seconds: ${SMARTLAB_JWT_ACCESS_TTL_SECONDS:900}

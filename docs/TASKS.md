@@ -245,9 +245,21 @@ SPRING_PROFILES_ACTIVE=nodb ./mvnw clean test
 
 - Name: Implement database-backed Spring Security foundation
 - Assignee: Minh
-- Status: `READY_FOR_REVIEW`
+- Status: `DONE`
 - Progress: 100%
 - Branch: `feature/minh-security-foundation`
 - Test result: `144 tests run, 0 failures, 0 errors, 0 skipped; PostgreSQL 18.4 authentication, BCrypt compatibility, active role authorization, JSON 401/403, stateless behavior, REST CSRF policy, application startup, and actuator health verified`
 - Scope: Database-backed user authentication, BCrypt password verification, SmartLab principal, active role mapping, stateless HTTP Basic, REST CSRF policy, JSON 401/403, Admin authorization rules, nodb compatibility, and security tests
 - Notes: Manual verification completed with temporary ADMIN and MEMBER accounts. ADMIN access returned HTTP 200, MEMBER access returned JSON HTTP 403, incorrect credentials returned JSON HTTP 401, authenticated invalid POST returned JSON HTTP 400, no session cookie was created, and Spring Boot no longer generated a development password. JWT, login endpoints, refresh tokens, logout, CORS, login history, and frontend integration remain deferred.
+- Notes: PR #21 was merged into `main`.
+
+## BE-010: Implement JWT access-token authentication API
+
+- Name: Implement JWT access-token authentication API
+- Assignee: Minh
+- Status: `READY_FOR_REVIEW`
+- Progress: 100%
+- Branch: `feature/minh-jwt-auth-api`
+- Test result: `158 tests run, 0 failures, 0 errors, 0 skipped; local PostgreSQL 18.4 application context, JWT bean graph, login API, current-user API, Bearer authentication, Admin role authorization, JSON 400/401/403 responses, HTTP Basic removal, stateless behavior, REST CSRF policy, and actuator health verified`
+- Scope: Login API, current-user API, HS256 JWT issuing and validation, Bearer authentication, role claims, JSON authentication failures, stateless security, `nodb` compatibility, and tests
+- Notes: Manual verification completed with temporary ADMIN and MEMBER accounts. Health returned HTTP 200; ADMIN and MEMBER login returned HTTP 200 with Bearer access tokens; ADMIN access to the Admin API returned HTTP 200; MEMBER access returned JSON HTTP 403; `/api/auth/me` returned the authenticated user; incorrect password, tampered token, and HTTP Basic authentication returned JSON HTTP 401; authenticated invalid POST returned JSON HTTP 400; no session cookie was created. Temporary users and lab were removed successfully. Refresh tokens, logout persistence, token revocation, CORS, login history, password reset, and frontend integration remain deferred.
