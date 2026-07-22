@@ -158,9 +158,9 @@ export function AppShell() {
 
   return (
     <div className="min-h-screen bg-background text-ink">
-      <div className="mx-auto flex min-h-screen max-w-[1400px]">
+      <div className="mx-auto flex min-h-screen max-w-[1400px] md:pl-64">
         {/* Desktop sidebar */}
-        <aside className="hidden w-64 shrink-0 border-r border-hairline px-4 py-6 md:flex md:flex-col">
+        <aside className="fixed left-[max(0px,calc((100vw-1400px)/2))] top-0 z-40 hidden h-dvh w-64 shrink-0 overflow-y-auto border-r border-hairline bg-background px-4 py-6 md:flex md:flex-col">
           <Link to="/" className="mb-8 flex items-center gap-2.5 px-2">
             <span className="grid h-8 w-8 place-items-center rounded-md bg-primary text-primary-foreground">
               <span className="font-display text-lg leading-none">N</span>
