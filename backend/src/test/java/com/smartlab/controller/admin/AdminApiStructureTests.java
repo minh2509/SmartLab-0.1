@@ -13,7 +13,9 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.smartlab.dto.request.admin.CreateAdminUserRequest;
 import com.smartlab.dto.request.admin.UpdateAdminUserRequest;
+import com.smartlab.dto.response.admin.AdminPermissionResponse;
 import com.smartlab.dto.response.admin.AdminRoleResponse;
+import com.smartlab.dto.response.admin.AdminSystemRoleResponse;
 import com.smartlab.dto.response.admin.AdminUserResponse;
 import com.smartlab.dto.response.admin.AdminUserRoleResponse;
 
@@ -23,6 +25,7 @@ class AdminApiStructureTests {
 	void controllersAreRestAdaptersWithoutRepositoryDependenciesAndInactiveInNodb() {
 		assertControllerBoundary(AdminUserController.class);
 		assertControllerBoundary(AdminUserRoleController.class);
+		assertControllerBoundary(AdminRoleController.class);
 	}
 
 	@Test
@@ -32,6 +35,8 @@ class AdminApiStructureTests {
 		assertFalse(hasRecordComponent(UpdateAdminUserRequest.class, "password"));
 		assertNoCredentialComponent(AdminUserResponse.class);
 		assertNoCredentialComponent(AdminRoleResponse.class);
+		assertNoCredentialComponent(AdminSystemRoleResponse.class);
+		assertNoCredentialComponent(AdminPermissionResponse.class);
 		assertNoCredentialComponent(AdminUserRoleResponse.class);
 	}
 
