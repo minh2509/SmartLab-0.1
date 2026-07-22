@@ -34,6 +34,29 @@ From the `backend` directory:
 SPRING_PROFILES_ACTIVE=nodb ./mvnw spring-boot:run
 ```
 
+## Run locally with PostgreSQL
+
+Create a local `.env` file from `.env.example` and set your real local database password.
+
+`.env` is ignored by Git. Spring Boot does not automatically read `.env`; export it in the shell before starting the backend:
+
+```bash
+cd backend
+set -a
+source .env
+set +a
+./mvnw spring-boot:run
+```
+
+To run the full monorepo with the local backend profile from the repository root:
+
+```bash
+set -a
+source backend/.env
+set +a
+npm run dev
+```
+
 ## Health check
 
 ```bash
