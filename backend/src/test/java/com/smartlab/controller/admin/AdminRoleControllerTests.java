@@ -2,7 +2,11 @@ package com.smartlab.controller.admin;
 
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -61,6 +65,21 @@ class AdminRoleControllerTests {
 				.andExpect(jsonPath("$[0].id").value(permissionId.toString()))
 				.andExpect(jsonPath("$[0].code").value("USER_MANAGE"))
 				.andExpect(jsonPath("$[0].module").value("ADMIN"));
+	}
+
+	@Test
+	void rolePermissionCatalogDoesNotExposeMutationMethods() throws Exception {
+		UUID roleId = UUID.randomUUID();
+		String path = "/api/admin/roles/{roleId}/permissions";
+
+		mockMvc.perform(post(path, roleId))
+				.andExpect(status().isMethodNotAllowed());
+		mockMvc.perform(put(path, roleId))
+				.andExpect(status().isMethodNotAllowed());
+		mockMvc.perform(patch(path, roleId))
+				.andExpect(status().isMethodNotAllowed());
+		mockMvc.perform(delete(path, roleId))
+				.andExpect(status().isMethodNotAllowed());
 	}
 
 	@Test

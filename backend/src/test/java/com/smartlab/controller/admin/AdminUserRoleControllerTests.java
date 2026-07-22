@@ -8,6 +8,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -17,6 +18,7 @@ import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
@@ -49,15 +51,37 @@ class AdminUserRoleControllerTests {
 	}
 
 	@Test
-	void assignRoleUsesPutAndKeepsAssignedByNullUntilAuthenticationExists() throws Exception {
+	void assignRoleUsesPostCollectionContractAndKeepsAssignedByNullUntilAuthenticationExists() throws Exception {
 		UUID userId = UUID.randomUUID();
 		UUID roleId = UUID.randomUUID();
 		when(adminUserRoleService.assignRoleToUser(any(AdminUserRoleService.AssignUserRoleCommand.class)))
 				.thenReturn(roleSummary(UUID.randomUUID(), roleId, "ADMIN", UserRoleStatus.ACTIVE));
 
-		mockMvc.perform(put("/api/admin/users/{userId}/roles/{roleId}", userId, roleId))
+		mockMvc.perform(post("/api/admin/users/{userId}/roles", userId)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"roleId\":\"" + roleId + "\"}"))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.roleCode").value("ADMIN"))
+				.andExpect(jsonPath("$.status").value("ACTIVE"));
+
+		ArgumentCaptor<AdminUserRoleService.AssignUserRoleCommand> captor =
+				ArgumentCaptor.forClass(AdminUserRoleService.AssignUserRoleCommand.class);
+		verify(adminUserRoleService).assignRoleToUser(captor.capture());
+		assertEquals(userId, captor.getValue().userId());
+		assertEquals(roleId, captor.getValue().roleId());
+		assertNull(captor.getValue().assignedByUserId());
+	}
+
+	@Test
+	void assignRoleKeepsLegacyPutCompatibility() throws Exception {
+		UUID userId = UUID.randomUUID();
+		UUID roleId = UUID.randomUUID();
+		when(adminUserRoleService.assignRoleToUser(any(AdminUserRoleService.AssignUserRoleCommand.class)))
+				.thenReturn(roleSummary(UUID.randomUUID(), roleId, "LEADER", UserRoleStatus.ACTIVE));
+
+		mockMvc.perform(put("/api/admin/users/{userId}/roles/{roleId}", userId, roleId))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.roleCode").value("LEADER"))
 				.andExpect(jsonPath("$.status").value("ACTIVE"));
 
 		ArgumentCaptor<AdminUserRoleService.AssignUserRoleCommand> captor =

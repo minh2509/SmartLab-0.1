@@ -8,14 +8,19 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.smartlab.dto.request.admin.AssignAdminUserRoleRequest;
 import com.smartlab.dto.response.admin.AdminRoleResponse;
 import com.smartlab.dto.response.admin.AdminUserRoleResponse;
 import com.smartlab.mapper.AdminUserApiMapper;
 import com.smartlab.service.admin.AdminUserRoleService;
+
+import jakarta.validation.Valid;
 
 @RestController
 @RequestMapping("/api/admin/users/{userId}/roles")
@@ -38,10 +43,21 @@ public class AdminUserRoleController {
 				.toList();
 	}
 
-	@PutMapping("/{roleId}")
+	@PostMapping
 	public AdminUserRoleResponse assignRole(
 			@PathVariable UUID userId,
+			@Valid @RequestBody AssignAdminUserRoleRequest request) {
+		return assignRole(userId, request.roleId());
+	}
+
+	@PutMapping("/{roleId}")
+	public AdminUserRoleResponse assignRoleByPath(
+			@PathVariable UUID userId,
 			@PathVariable UUID roleId) {
+		return assignRole(userId, roleId);
+	}
+
+	private AdminUserRoleResponse assignRole(UUID userId, UUID roleId) {
 		return mapper.toUserRoleResponse(adminUserRoleService.assignRoleToUser(
 				new AdminUserRoleService.AssignUserRoleCommand(userId, roleId, null)));
 	}
