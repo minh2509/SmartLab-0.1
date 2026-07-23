@@ -2,6 +2,7 @@ package com.smartlab.service.common;
 
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.time.OffsetDateTime;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -187,18 +188,24 @@ public class NotificationService {
 
 	private NotificationResult persist(Notification notification, List<User> recipients) {
 		List<User> uniqueRecipients = validateAndDeduplicate(recipients, notification.getLab());
+		OffsetDateTime createdAt = OffsetDateTime.now();
+		notification.setCreatedAt(createdAt);
 		Notification saved = notificationRepository.save(notification);
 		List<NotificationRecipient> recipientEntities = uniqueRecipients.stream()
-				.map(user -> recipient(saved, user))
+				.map(user -> recipient(saved, user, createdAt))
 				.toList();
 		notificationRecipientRepository.saveAll(recipientEntities);
 		return new NotificationResult(saved.getId(), recipientEntities.size());
 	}
 
-	private static NotificationRecipient recipient(Notification notification, User user) {
+	private static NotificationRecipient recipient(
+			Notification notification,
+			User user,
+			OffsetDateTime createdAt) {
 		NotificationRecipient recipient = new NotificationRecipient();
 		recipient.setNotification(notification);
 		recipient.setRecipient(user);
+		recipient.setCreatedAt(createdAt);
 		return recipient;
 	}
 
