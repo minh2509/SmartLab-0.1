@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -17,11 +18,13 @@ import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
@@ -56,6 +59,7 @@ import com.smartlab.repository.PostRepository;
 import com.smartlab.repository.RoleRepository;
 import com.smartlab.repository.UserRepository;
 import com.smartlab.repository.UserRoleRepository;
+import com.smartlab.service.common.AuditLogService;
 import com.smartlab.service.common.PostWorkflowService;
 
 class AdminPostServiceTests {
@@ -67,6 +71,7 @@ class AdminPostServiceTests {
 	private final RoleRepository roleRepository = mock(RoleRepository.class);
 	private final UserRoleRepository userRoleRepository = mock(UserRoleRepository.class);
 	private final AdminRolePolicy rolePolicy = new AdminRolePolicy(userRepository, roleRepository, userRoleRepository);
+	private final AuditLogService auditLogService = mock(AuditLogService.class);
 	private final Clock clock = Clock.fixed(Instant.parse("2026-07-23T08:15:30Z"), ZoneOffset.UTC);
 	private final AdminPostService service = new AdminPostService(
 			postRepository,
@@ -75,6 +80,7 @@ class AdminPostServiceTests {
 			rolePolicy,
 			new PostWorkflowService(),
 			new AdminPostApiMapper(),
+			auditLogService,
 			clock);
 
 	@Test
@@ -848,6 +854,206 @@ class AdminPostServiceTests {
 	}
 
 	@Test
+	void deleteLabAnnouncementRejectsNullCommandActorAndPostId() {
+		assertThrows(
+				InvalidAdminServiceInputException.class,
+				() -> service.deleteLabAnnouncement(null));
+		assertThrows(
+				InvalidAdminServiceInputException.class,
+				() -> service.deleteLabAnnouncement(new AdminPostService.DeleteAdminLabAnnouncementCommand(
+						null,
+						UUID.randomUUID())));
+
+		Lab lab = lab(UUID.randomUUID());
+		User actor = user(UUID.randomUUID(), lab, UserAccountStatus.ACTIVE);
+		stubActiveActor(actor, role(UUID.randomUUID(), AdminRolePolicy.ADMIN_ROLE_CODE));
+		assertThrows(
+				InvalidAdminServiceInputException.class,
+				() -> service.deleteLabAnnouncement(new AdminPostService.DeleteAdminLabAnnouncementCommand(
+						actor.getId(),
+						null)));
+		verify(postRepository, never()).findAdminPostDetail(any(), any());
+		verify(postRepository, never()).saveAndFlush(any(Post.class));
+		verify(auditLogService, never()).record(any(AuditLogService.AuditCommand.class));
+	}
+
+	@Test
+	void deleteLabAnnouncementRejectsMissingOrNonAdminActorThroughRolePolicy() {
+		UUID missingActorId = UUID.randomUUID();
+		when(userRepository.findById(missingActorId)).thenReturn(Optional.empty());
+		assertThrows(
+				ForbiddenAdminOperationException.class,
+				() -> service.deleteLabAnnouncement(deleteCommand(missingActorId, UUID.randomUUID())));
+
+		Lab lab = lab(UUID.randomUUID());
+		User memberActor = user(UUID.randomUUID(), lab, UserAccountStatus.ACTIVE);
+		stubActiveActor(memberActor, role(UUID.randomUUID(), AdminRolePolicy.MEMBER_ROLE_CODE));
+		assertThrows(
+				ForbiddenAdminOperationException.class,
+				() -> service.deleteLabAnnouncement(deleteCommand(memberActor.getId(), UUID.randomUUID())));
+
+		User leaderActor = user(UUID.randomUUID(), lab, UserAccountStatus.ACTIVE);
+		stubActiveActor(leaderActor, role(UUID.randomUUID(), AdminRolePolicy.LEADER_ROLE_CODE));
+		assertThrows(
+				ForbiddenAdminOperationException.class,
+				() -> service.deleteLabAnnouncement(deleteCommand(leaderActor.getId(), UUID.randomUUID())));
+
+		User revokedActor = user(UUID.randomUUID(), lab, UserAccountStatus.ACTIVE);
+		when(userRepository.findById(revokedActor.getId())).thenReturn(Optional.of(revokedActor));
+		when(userRoleRepository.findByUserAndStatus(revokedActor, UserRoleStatus.ACTIVE)).thenReturn(List.of());
+		assertThrows(
+				ForbiddenAdminOperationException.class,
+				() -> service.deleteLabAnnouncement(deleteCommand(revokedActor.getId(), UUID.randomUUID())));
+
+		verify(postRepository, never()).findAdminPostDetail(any(), any());
+		verify(postRepository, never()).saveAndFlush(any(Post.class));
+		verify(auditLogService, never()).record(any(AuditLogService.AuditCommand.class));
+	}
+
+	@Test
+	void deleteLabAnnouncementAdminSoftDeletesOnlyDeletedAtAndAuditsAfterPersistence() {
+		Lab lab = lab(UUID.randomUUID());
+		User actor = user(UUID.randomUUID(), lab, UserAccountStatus.ACTIVE);
+		stubActiveActor(actor, role(UUID.randomUUID(), AdminRolePolicy.ADMIN_ROLE_CODE));
+		Post post = post(lab);
+		post.setContentType(PostContentType.LAB_ANNOUNCEMENT);
+		post.setTitle("Lab Announcement");
+		post.setSlug("lab-announcement");
+		post.setSummary("Short summary");
+		post.setContent("Full private content");
+		post.setVisibility(PostVisibility.LAB_INTERNAL);
+		post.setModerationStatus(PostStatus.PUBLISHED);
+		post.setPublishedAt(OffsetDateTime.parse("2026-07-20T10:15:30Z"));
+		UUID postId = post.getId();
+		User author = post.getAuthor();
+		Project project = post.getProject();
+		PostCategory category = post.getCategory();
+		File coverFile = post.getCoverFile();
+		OffsetDateTime createdAt = post.getCreatedAt();
+		OffsetDateTime updatedAt = post.getUpdatedAt();
+		when(postRepository.findAdminPostDetail(lab.getId(), postId)).thenReturn(Optional.of(post));
+		stubSaveAndFlush();
+
+		service.deleteLabAnnouncement(deleteCommand(actor.getId(), postId));
+
+		verify(postRepository).findAdminPostDetail(lab.getId(), postId);
+		InOrder inOrder = inOrder(postRepository, auditLogService);
+		inOrder.verify(postRepository).saveAndFlush(post);
+		ArgumentCaptor<AuditLogService.AuditCommand> auditCaptor =
+				ArgumentCaptor.forClass(AuditLogService.AuditCommand.class);
+		inOrder.verify(auditLogService).record(auditCaptor.capture());
+		assertEquals(postId, post.getId());
+		assertEquals(lab, post.getLab());
+		assertEquals(author, post.getAuthor());
+		assertEquals(project, post.getProject());
+		assertEquals(category, post.getCategory());
+		assertEquals(coverFile, post.getCoverFile());
+		assertEquals("Lab Announcement", post.getTitle());
+		assertEquals("lab-announcement", post.getSlug());
+		assertEquals("Short summary", post.getSummary());
+		assertEquals("Full private content", post.getContent());
+		assertEquals(PostContentType.LAB_ANNOUNCEMENT, post.getContentType());
+		assertEquals(PostVisibility.LAB_INTERNAL, post.getVisibility());
+		assertEquals(PostStatus.PUBLISHED, post.getModerationStatus());
+		assertEquals(OffsetDateTime.parse("2026-07-20T10:15:30Z"), post.getPublishedAt());
+		assertNull(post.getReviewedBy());
+		assertNull(post.getReviewedAt());
+		assertNull(post.getReviewNote());
+		assertEquals(createdAt, post.getCreatedAt());
+		assertEquals(updatedAt, post.getUpdatedAt());
+		assertEquals(OffsetDateTime.parse("2026-07-23T08:15:30Z"), post.getDeletedAt());
+		assertDeleteAudit(
+				auditCaptor.getValue(),
+				actor.getId(),
+				postId,
+				null,
+				OffsetDateTime.parse("2026-07-23T08:15:30Z"));
+		verifyNoHardDelete();
+		verifyNoChildLookup();
+	}
+
+	@Test
+	void deleteLabAnnouncementAcceptsSuperAdmin() {
+		Lab lab = lab(UUID.randomUUID());
+		User actor = user(UUID.randomUUID(), lab, UserAccountStatus.ACTIVE);
+		stubActiveActor(actor, role(UUID.randomUUID(), AdminRolePolicy.SUPER_ADMIN_ROLE_CODE));
+		Post post = post(lab);
+		post.setContentType(PostContentType.LAB_ANNOUNCEMENT);
+		when(postRepository.findAdminPostDetail(lab.getId(), post.getId())).thenReturn(Optional.of(post));
+		stubSaveAndFlush();
+
+		service.deleteLabAnnouncement(deleteCommand(actor.getId(), post.getId()));
+
+		verify(postRepository).saveAndFlush(post);
+		verify(auditLogService).record(any(AuditLogService.AuditCommand.class));
+		assertEquals(OffsetDateTime.parse("2026-07-23T08:15:30Z"), post.getDeletedAt());
+		verifyNoChildLookup();
+	}
+
+	@Test
+	void deleteLabAnnouncementEmptyLookupBecomesGenericNotFound() {
+		Lab lab = lab(UUID.randomUUID());
+		User actor = user(UUID.randomUUID(), lab, UserAccountStatus.ACTIVE);
+		stubActiveActor(actor, role(UUID.randomUUID(), AdminRolePolicy.ADMIN_ROLE_CODE));
+		UUID postId = UUID.randomUUID();
+		when(postRepository.findAdminPostDetail(lab.getId(), postId)).thenReturn(Optional.empty());
+
+		ResourceNotFoundException exception = assertThrows(
+				ResourceNotFoundException.class,
+				() -> service.deleteLabAnnouncement(deleteCommand(actor.getId(), postId)));
+
+		assertEquals("Post was not found.", exception.getMessage());
+		verify(postRepository).findAdminPostDetail(lab.getId(), postId);
+		verify(postRepository, never()).saveAndFlush(any(Post.class));
+		verify(auditLogService, never()).record(any(AuditLogService.AuditCommand.class));
+		verifyNoChildLookup();
+	}
+
+	@Test
+	void deleteLabAnnouncementWrongContentTypeReturnsGenericNotFoundWithoutMutation() {
+		Lab lab = lab(UUID.randomUUID());
+		User actor = user(UUID.randomUUID(), lab, UserAccountStatus.ACTIVE);
+		stubActiveActor(actor, role(UUID.randomUUID(), AdminRolePolicy.ADMIN_ROLE_CODE));
+		Post post = post(lab);
+		post.setContentType(PostContentType.NEWS);
+		assertNull(post.getDeletedAt());
+		when(postRepository.findAdminPostDetail(lab.getId(), post.getId())).thenReturn(Optional.of(post));
+
+		ResourceNotFoundException exception = assertThrows(
+				ResourceNotFoundException.class,
+				() -> service.deleteLabAnnouncement(deleteCommand(actor.getId(), post.getId())));
+
+		assertEquals("Post was not found.", exception.getMessage());
+		assertNull(post.getDeletedAt());
+		verify(postRepository, never()).saveAndFlush(any(Post.class));
+		verify(auditLogService, never()).record(any(AuditLogService.AuditCommand.class));
+		verifyNoHardDelete();
+		verifyNoChildLookup();
+	}
+
+	@Test
+	void deleteLabAnnouncementPersistenceFailurePreventsAudit() {
+		Lab lab = lab(UUID.randomUUID());
+		User actor = user(UUID.randomUUID(), lab, UserAccountStatus.ACTIVE);
+		stubActiveActor(actor, role(UUID.randomUUID(), AdminRolePolicy.ADMIN_ROLE_CODE));
+		Post post = post(lab);
+		post.setContentType(PostContentType.LAB_ANNOUNCEMENT);
+		RuntimeException failure = new RuntimeException("save failed");
+		when(postRepository.findAdminPostDetail(lab.getId(), post.getId())).thenReturn(Optional.of(post));
+		when(postRepository.saveAndFlush(post)).thenThrow(failure);
+
+		RuntimeException exception = assertThrows(
+				RuntimeException.class,
+				() -> service.deleteLabAnnouncement(deleteCommand(actor.getId(), post.getId())));
+
+		assertEquals(failure, exception);
+		assertEquals(OffsetDateTime.parse("2026-07-23T08:15:30Z"), post.getDeletedAt());
+		verify(auditLogService, never()).record(any(AuditLogService.AuditCommand.class));
+		verifyNoHardDelete();
+		verifyNoChildLookup();
+	}
+
+	@Test
 	void approvePostRejectsNullCommandActorAndPostId() {
 		assertThrows(
 				InvalidAdminServiceInputException.class,
@@ -1077,14 +1283,81 @@ class AdminPostServiceTests {
 				"getLabAnnouncementDetail",
 				AdminPostService.GetAdminLabAnnouncementDetailQuery.class));
 		assertMutationTransaction(AdminPostService.class.getMethod(
+				"deleteLabAnnouncement",
+				AdminPostService.DeleteAdminLabAnnouncementCommand.class));
+		assertMutationTransaction(AdminPostService.class.getMethod(
 				"approvePost",
 				AdminPostService.ApproveAdminPostCommand.class));
+	}
+
+	@Test
+	void serviceDoesNotIntroduceNotificationDependencyForLabAnnouncementDelete() {
+		assertFalse(java.util.Arrays.stream(AdminPostService.class.getDeclaredFields())
+				.anyMatch(field -> field.getType().getSimpleName().contains("Notification")));
+		assertFalse(java.util.Arrays.stream(AdminPostService.class.getConstructors())
+				.flatMap(constructor -> java.util.Arrays.stream(constructor.getParameterTypes()))
+				.anyMatch(type -> type.getSimpleName().contains("Notification")));
 	}
 
 	private void stubActiveActor(User actor, Role role) {
 		when(userRepository.findById(actor.getId())).thenReturn(Optional.of(actor));
 		when(userRoleRepository.findByUserAndStatus(actor, UserRoleStatus.ACTIVE))
 				.thenReturn(List.of(userRole(actor, role)));
+	}
+
+	private void stubSaveAndFlush() {
+		when(postRepository.saveAndFlush(any(Post.class))).thenAnswer(invocation -> invocation.getArgument(0));
+	}
+
+	private void verifyNoChildLookup() {
+		verify(postAttachmentRepository, never()).findVisibleAdminPostAttachments(any(Post.class));
+		verify(postModerationLogRepository, never()).findAdminPostModerationHistory(any(Post.class));
+	}
+
+	private void verifyNoHardDelete() {
+		verify(postRepository, never()).delete(any(Post.class));
+		verify(postRepository, never()).deleteById(any(UUID.class));
+		verify(postRepository, never()).deleteAll();
+	}
+
+	private static AdminPostService.DeleteAdminLabAnnouncementCommand deleteCommand(UUID actorUserId, UUID postId) {
+		return new AdminPostService.DeleteAdminLabAnnouncementCommand(actorUserId, postId);
+	}
+
+	private static void assertDeleteAudit(
+			AuditLogService.AuditCommand command,
+			UUID actorId,
+			UUID postId,
+			OffsetDateTime oldDeletedAt,
+			OffsetDateTime newDeletedAt) {
+		assertEquals(actorId, command.actorId());
+		assertEquals("DELETE_LAB_ANNOUNCEMENT", command.action());
+		assertEquals("LAB_ANNOUNCEMENT", command.entityType());
+		assertEquals(postId, command.entityId());
+		assertDeleteSnapshot((Map<?, ?>) command.oldValue(), oldDeletedAt);
+		assertDeleteSnapshot((Map<?, ?>) command.newValue(), newDeletedAt);
+	}
+
+	private static void assertDeleteSnapshot(Map<?, ?> snapshot, OffsetDateTime deletedAt) {
+		assertEquals(List.of(
+				"title",
+				"slug",
+				"visibility",
+				"moderationStatus",
+				"publishedAt",
+				"summaryLength",
+				"contentLength",
+				"deletedAt"), List.copyOf(snapshot.keySet()));
+		assertEquals("Lab Announcement", snapshot.get("title"));
+		assertEquals("lab-announcement", snapshot.get("slug"));
+		assertEquals(PostVisibility.LAB_INTERNAL, snapshot.get("visibility"));
+		assertEquals(PostStatus.PUBLISHED, snapshot.get("moderationStatus"));
+		assertEquals(OffsetDateTime.parse("2026-07-20T10:15:30Z"), snapshot.get("publishedAt"));
+		assertEquals(13, snapshot.get("summaryLength"));
+		assertEquals(20, snapshot.get("contentLength"));
+		assertEquals(deletedAt, snapshot.get("deletedAt"));
+		assertFalse(snapshot.containsKey("summary"));
+		assertFalse(snapshot.containsKey("content"));
 	}
 
 	private void assertKeywordPattern(String keyword, String expectedPattern) {

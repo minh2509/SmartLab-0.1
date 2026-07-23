@@ -2,6 +2,7 @@ package com.smartlab.service.admin;
 
 import java.time.Clock;
 import java.time.OffsetDateTime;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -34,6 +35,7 @@ import com.smartlab.mapper.AdminPostApiMapper;
 import com.smartlab.repository.PostAttachmentRepository;
 import com.smartlab.repository.PostModerationLogRepository;
 import com.smartlab.repository.PostRepository;
+import com.smartlab.service.common.AuditLogService;
 import com.smartlab.service.common.PostWorkflowService;
 
 @Service
@@ -50,6 +52,7 @@ public class AdminPostService {
 	private final AdminRolePolicy rolePolicy;
 	private final PostWorkflowService workflowService;
 	private final AdminPostApiMapper mapper;
+	private final AuditLogService auditLogService;
 	private final Clock clock;
 
 	public AdminPostService(
@@ -59,6 +62,7 @@ public class AdminPostService {
 			AdminRolePolicy rolePolicy,
 			PostWorkflowService workflowService,
 			AdminPostApiMapper mapper,
+			AuditLogService auditLogService,
 			Clock clock) {
 		this.postRepository = postRepository;
 		this.postAttachmentRepository = postAttachmentRepository;
@@ -66,6 +70,7 @@ public class AdminPostService {
 		this.rolePolicy = rolePolicy;
 		this.workflowService = workflowService;
 		this.mapper = mapper;
+		this.auditLogService = auditLogService;
 		this.clock = clock;
 	}
 
@@ -184,6 +189,33 @@ public class AdminPostService {
 	}
 
 	@Transactional
+	public void deleteLabAnnouncement(DeleteAdminLabAnnouncementCommand command) {
+		if (command == null) {
+			throw new InvalidAdminServiceInputException("Delete admin lab announcement command must not be null.");
+		}
+		AdminRolePolicy.ActorContext actor = rolePolicy.requireAdminActor(command.actorUserId());
+		if (command.postId() == null) {
+			throw new InvalidAdminServiceInputException("Post ID must not be null.");
+		}
+		Post post = postRepository.findAdminPostDetail(actor.lab().getId(), command.postId())
+				.orElseThrow(() -> new ResourceNotFoundException("Post was not found."));
+		if (post.getContentType() != PostContentType.LAB_ANNOUNCEMENT) {
+			throw new ResourceNotFoundException("Post was not found.");
+		}
+		Map<String, Object> oldValue = labAnnouncementDeleteAuditValue(post);
+		post.setDeletedAt(OffsetDateTime.now(clock));
+		Post savedPost = postRepository.saveAndFlush(post);
+		Map<String, Object> newValue = labAnnouncementDeleteAuditValue(savedPost);
+		auditLogService.record(new AuditLogService.AuditCommand(
+				actor.actor().getId(),
+				"DELETE_LAB_ANNOUNCEMENT",
+				"LAB_ANNOUNCEMENT",
+				savedPost.getId(),
+				oldValue,
+				newValue));
+	}
+
+	@Transactional
 	public AdminPostModerationActionResponse approvePost(ApproveAdminPostCommand command) {
 		if (command == null) {
 			throw new InvalidAdminServiceInputException("Approve admin post command must not be null.");
@@ -264,6 +296,19 @@ public class AdminPostService {
 		return "%" + escapedKeyword + "%";
 	}
 
+	private static Map<String, Object> labAnnouncementDeleteAuditValue(Post post) {
+		Map<String, Object> value = new LinkedHashMap<>();
+		value.put("title", post.getTitle());
+		value.put("slug", post.getSlug());
+		value.put("visibility", post.getVisibility());
+		value.put("moderationStatus", post.getModerationStatus());
+		value.put("publishedAt", post.getPublishedAt());
+		value.put("summaryLength", post.getSummary() == null ? 0 : post.getSummary().length());
+		value.put("contentLength", post.getContent() == null ? 0 : post.getContent().length());
+		value.put("deletedAt", post.getDeletedAt());
+		return value;
+	}
+
 	private AdminPostPageResponse listPostsForActor(
 			Lab lab,
 			String keywordPattern,
@@ -315,6 +360,11 @@ public class AdminPostService {
 	}
 
 	public record GetAdminLabAnnouncementDetailQuery(
+			UUID actorUserId,
+			UUID postId) {
+	}
+
+	public record DeleteAdminLabAnnouncementCommand(
 			UUID actorUserId,
 			UUID postId) {
 	}

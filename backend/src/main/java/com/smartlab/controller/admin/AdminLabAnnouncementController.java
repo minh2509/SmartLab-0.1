@@ -3,6 +3,8 @@ package com.smartlab.controller.admin;
 import java.util.UUID;
 
 import org.springframework.context.annotation.Profile;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -47,5 +49,13 @@ public class AdminLabAnnouncementController {
 		return adminPostService.getLabAnnouncementDetail(new AdminPostService.GetAdminLabAnnouncementDetailQuery(
 				actorResolver.requireActorUserId(),
 				postId));
+	}
+
+	@DeleteMapping("/{postId}")
+	public ResponseEntity<Void> deleteLabAnnouncement(@PathVariable UUID postId) {
+		adminPostService.deleteLabAnnouncement(new AdminPostService.DeleteAdminLabAnnouncementCommand(
+				actorResolver.requireActorUserId(),
+				postId));
+		return ResponseEntity.noContent().build();
 	}
 }
