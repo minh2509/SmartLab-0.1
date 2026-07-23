@@ -141,12 +141,13 @@ SPRING_PROFILES_ACTIVE=nodb ./mvnw clean test
 
 - Name: Review PostgreSQL source schema
 - Assignee: Minh
-- Status: `READY_FOR_REVIEW`
+- Status: `DONE`
 - Progress: 100%
 - Branch: `chore/db-schema-review`
 - Test result: Not applicable; documentation review only
 - Scope: Schema review and migration planning only
 - Notes: Completed immutable-source review of `docs/database/lab-source.sql`; conclusion is `NEEDS_REVISION` before migration preparation.
+- Notes: PR #8 merged into `main` with merge commit `0ebd072a691eb4929cf0ab3ec29f392cede1254e`.
 
 ## DB-002: Prepare PostgreSQL Migration Plan
 
