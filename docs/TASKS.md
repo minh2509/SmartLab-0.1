@@ -141,17 +141,20 @@ SPRING_PROFILES_ACTIVE=nodb ./mvnw clean test
 
 - Name: List posts waiting for administrator review
 - Assignee: Minh
-- Status: `NOT_STARTED`
-- Progress: 0%
+- Status: `READY_FOR_REVIEW`
+- Progress: 100%
 - Branch: `feature/minh-admin-pending-posts`
 - Endpoint: `GET /api/admin/posts/pending`
 - Dependencies: ADM-055
-- Test result: Not run
-- Runtime result: Not run
+- Test result: 204 tests run, 0 failures, 0 errors; BUILD SUCCESS
+- Runtime result: PostgreSQL 18.4 API and queue-order contract verification passed
 - Scope: ADMIN/SUPER_ADMIN-only, lab-scoped, paginated pending-review queue.
 - Notes: Only return non-deleted `PENDING_REVIEW` posts.
 - Notes: Order by each post's latest `SUBMIT` moderation-log timestamp ascending; posts without a `SUBMIT` log remain visible and are placed last; use `post.id ASC` as the stable tie-breaker.
 - Notes: Reuse the ADM-055 page and summary response contracts; do not add a migration or change the existing list endpoint contract.
+- Notes: Targeted ADM-056 tests passed, including controller, service, repository-structure, and admin security coverage.
+- Notes: PostgreSQL runtime verified HTTP 401, 403, and 200 behavior; latest-SUBMIT ordering, UUID tie-breaks, null submission timestamps, stable pagination, lab isolation, soft-delete exclusion, and sensitive-field omission all passed.
+- Notes: Runtime fixtures and backend process were removed successfully; remaining fixture labs, users, user roles, posts, and moderation logs are all zero.
 
 ### Acceptance Criteria
 

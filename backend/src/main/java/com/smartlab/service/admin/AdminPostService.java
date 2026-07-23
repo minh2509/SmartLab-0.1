@@ -1,14 +1,21 @@
 package com.smartlab.service.admin;
 
+import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import org.springframework.context.annotation.Profile;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.smartlab.dto.response.admin.AdminPostPageResponse;
+import com.smartlab.entity.Post;
 import com.smartlab.enums.PostContentType;
 import com.smartlab.enums.PostStatus;
 import com.smartlab.enums.PostVisibility;
@@ -57,6 +64,41 @@ public class AdminPostService {
 				PageRequest.of(page, size)));
 	}
 
+	@Transactional(readOnly = true)
+	public AdminPostPageResponse listPendingPosts(ListPendingAdminPostsQuery query) {
+		if (query == null) {
+			throw new InvalidAdminServiceInputException("List pending admin posts query must not be null.");
+		}
+		AdminRolePolicy.ActorContext actor = rolePolicy.requireAdminActor(query.actorUserId());
+		int page = normalizedPage(query.page());
+		int size = normalizedSize(query.size());
+		PageRequest pageable = PageRequest.of(page, size);
+		Page<UUID> orderedIdPage = postRepository.findPendingAdminPostIds(
+				actor.lab().getId(),
+				pageable);
+		if (orderedIdPage.isEmpty()) {
+			return mapper.toPageResponse(new PageImpl<>(
+					List.of(),
+					pageable,
+					orderedIdPage.getTotalElements()));
+		}
+		List<UUID> orderedIds = orderedIdPage.getContent();
+		UUID labId = actor.lab().getId();
+		Map<UUID, Post> postsById = postRepository.findPendingAdminPostsByIdIn(labId, orderedIds)
+				.stream()
+				.collect(Collectors.toMap(Post::getId, Function.identity(), (left, right) -> left));
+		if (!postsById.keySet().containsAll(orderedIds)) {
+			throw new IllegalStateException("Pending admin post page fetch returned incomplete results.");
+		}
+		List<Post> orderedPosts = orderedIds.stream()
+				.map(postsById::get)
+				.toList();
+		return mapper.toPageResponse(new PageImpl<>(
+				orderedPosts,
+				pageable,
+				orderedIdPage.getTotalElements()));
+	}
+
 	private static int normalizedPage(Integer page) {
 		if (page == null) {
 			return DEFAULT_PAGE;
@@ -103,5 +145,11 @@ public class AdminPostService {
 			UUID authorId,
 			UUID projectId,
 			PostVisibility visibility) {
+	}
+
+	public record ListPendingAdminPostsQuery(
+			UUID actorUserId,
+			Integer page,
+			Integer size) {
 	}
 }

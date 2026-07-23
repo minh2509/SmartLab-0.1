@@ -1,5 +1,6 @@
 package com.smartlab.repository;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -84,4 +85,44 @@ public interface PostRepository extends JpaRepository<Post, UUID> {
 			@Param("projectId") UUID projectId,
 			@Param("visibility") PostVisibility visibility,
 			Pageable pageable);
+
+	@Query(
+			value = """
+					select post.id
+					from posts post
+					left join (
+						select log.post_id, max(log.created_at) as latest_submitted_at
+						from post_moderation_logs log
+						where log.action = 'SUBMIT'
+						group by log.post_id
+					) latest_submit on latest_submit.post_id = post.id
+					where post.lab_id = :labId
+						and post.deleted_at is null
+						and post.moderation_status = 'PENDING_REVIEW'
+					order by latest_submit.latest_submitted_at asc nulls last, post.id asc
+					""",
+			countQuery = """
+					select count(*)
+					from posts post
+					where post.lab_id = :labId
+						and post.deleted_at is null
+						and post.moderation_status = 'PENDING_REVIEW'
+					""",
+			nativeQuery = true)
+	Page<UUID> findPendingAdminPostIds(
+			@Param("labId") UUID labId,
+			Pageable pageable);
+
+	@EntityGraph(attributePaths = {"author", "project", "category", "coverFile"})
+	@Query("""
+			select post
+			from Post post
+			where post.lab.id = :labId
+				and post.deletedAt is null
+				and post.moderationStatus = com.smartlab.enums.PostStatus.PENDING_REVIEW
+				and post.id in :ids
+			""")
+	List<Post> findPendingAdminPostsByIdIn(
+			@Param("labId") UUID labId,
+			@Param("ids") Collection<UUID> ids);
 }

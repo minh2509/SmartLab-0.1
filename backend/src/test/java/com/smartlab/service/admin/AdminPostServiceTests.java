@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -20,6 +21,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -284,6 +286,157 @@ class AdminPostServiceTests {
 	}
 
 	@Test
+	void listPendingPostsRejectsNullQuery() {
+		assertThrows(
+				InvalidAdminServiceInputException.class,
+				() -> service.listPendingPosts(null));
+	}
+
+	@Test
+	void listPendingPostsRejectsMissingActorOrActorWithoutCurrentAdminRole() {
+		UUID missingActorId = UUID.randomUUID();
+		when(userRepository.findById(missingActorId)).thenReturn(Optional.empty());
+
+		assertThrows(
+				ForbiddenAdminOperationException.class,
+				() -> service.listPendingPosts(new AdminPostService.ListPendingAdminPostsQuery(
+						missingActorId,
+						null,
+						null)));
+
+		Lab lab = lab(UUID.randomUUID());
+		User memberActor = user(UUID.randomUUID(), lab, UserAccountStatus.ACTIVE);
+		stubActiveActor(memberActor, role(UUID.randomUUID(), AdminRolePolicy.MEMBER_ROLE_CODE));
+
+		assertThrows(
+				ForbiddenAdminOperationException.class,
+				() -> service.listPendingPosts(new AdminPostService.ListPendingAdminPostsQuery(
+						memberActor.getId(),
+						null,
+						null)));
+	}
+
+	@Test
+	void listPendingPostsAcceptsAdminAndUsesActorLabDefaultsPagination() {
+		Lab lab = lab(UUID.randomUUID());
+		User actor = user(UUID.randomUUID(), lab, UserAccountStatus.ACTIVE);
+		stubActiveActor(actor, role(UUID.randomUUID(), AdminRolePolicy.ADMIN_ROLE_CODE));
+		when(postRepository.findPendingAdminPostIds(any(), any(Pageable.class)))
+				.thenReturn(Page.empty(PageRequest.of(0, 20)));
+
+		var response = service.listPendingPosts(new AdminPostService.ListPendingAdminPostsQuery(
+				actor.getId(),
+				null,
+				null));
+
+		ArgumentCaptor<Pageable> pageableCaptor = ArgumentCaptor.forClass(Pageable.class);
+		verify(postRepository).findPendingAdminPostIds(
+				org.mockito.Mockito.eq(lab.getId()),
+				pageableCaptor.capture());
+		verify(postRepository, never()).findPendingAdminPostsByIdIn(any(), any());
+		assertEquals(0, pageableCaptor.getValue().getPageNumber());
+		assertEquals(20, pageableCaptor.getValue().getPageSize());
+		assertEquals(0, response.page());
+		assertEquals(20, response.size());
+	}
+
+	@Test
+	void listPendingPostsAcceptsSuperAdmin() {
+		Lab lab = lab(UUID.randomUUID());
+		User actor = user(UUID.randomUUID(), lab, UserAccountStatus.ACTIVE);
+		stubActiveActor(actor, role(UUID.randomUUID(), AdminRolePolicy.SUPER_ADMIN_ROLE_CODE));
+		when(postRepository.findPendingAdminPostIds(any(), any(Pageable.class)))
+				.thenReturn(Page.empty(PageRequest.of(0, 20)));
+
+		service.listPendingPosts(new AdminPostService.ListPendingAdminPostsQuery(
+				actor.getId(),
+				0,
+				20));
+
+		verify(postRepository).findPendingAdminPostIds(org.mockito.Mockito.eq(lab.getId()), any(Pageable.class));
+	}
+
+	@Test
+	void listPendingPostsRejectsInvalidPageAndSize() {
+		Lab lab = lab(UUID.randomUUID());
+		User actor = user(UUID.randomUUID(), lab, UserAccountStatus.ACTIVE);
+		stubActiveActor(actor, role(UUID.randomUUID(), AdminRolePolicy.ADMIN_ROLE_CODE));
+
+		assertThrows(
+				InvalidAdminServiceInputException.class,
+				() -> service.listPendingPosts(new AdminPostService.ListPendingAdminPostsQuery(
+						actor.getId(),
+						-1,
+						20)));
+		assertThrows(
+				InvalidAdminServiceInputException.class,
+				() -> service.listPendingPosts(new AdminPostService.ListPendingAdminPostsQuery(
+						actor.getId(),
+						0,
+						0)));
+		assertThrows(
+				InvalidAdminServiceInputException.class,
+				() -> service.listPendingPosts(new AdminPostService.ListPendingAdminPostsQuery(
+						actor.getId(),
+						0,
+						101)));
+	}
+
+	@Test
+	void listPendingPostsReordersFetchedPostsAndKeepsIdPageTotals() {
+		Lab lab = lab(UUID.randomUUID());
+		User actor = user(UUID.randomUUID(), lab, UserAccountStatus.ACTIVE);
+		stubActiveActor(actor, role(UUID.randomUUID(), AdminRolePolicy.ADMIN_ROLE_CODE));
+		UUID firstId = UUID.fromString("00000000-0000-0000-0000-000000000001");
+		UUID secondId = UUID.fromString("00000000-0000-0000-0000-000000000002");
+		Post firstPost = post(lab, firstId);
+		Post secondPost = post(lab, secondId);
+		PageRequest pageable = PageRequest.of(1, 2);
+		when(postRepository.findPendingAdminPostIds(any(), any(Pageable.class)))
+				.thenReturn(new PageImpl<>(List.of(secondId, firstId), pageable, 7));
+		when(postRepository.findPendingAdminPostsByIdIn(lab.getId(), List.of(secondId, firstId)))
+				.thenReturn(List.of(firstPost, secondPost));
+
+		var response = service.listPendingPosts(new AdminPostService.ListPendingAdminPostsQuery(
+				actor.getId(),
+				1,
+				2));
+
+		verify(postRepository).findPendingAdminPostIds(org.mockito.Mockito.eq(lab.getId()), any(Pageable.class));
+		verify(postRepository).findPendingAdminPostsByIdIn(lab.getId(), List.of(secondId, firstId));
+		assertEquals(2, response.content().size());
+		assertEquals(secondId, response.content().get(0).id());
+		assertEquals(firstId, response.content().get(1).id());
+		assertEquals(1, response.page());
+		assertEquals(2, response.size());
+		assertEquals(7, response.totalElements());
+		assertEquals(4, response.totalPages());
+	}
+
+	@Test
+	void listPendingPostsThrowsWhenFetchedPostsDoNotCoverOrderedIdPage() {
+		Lab lab = lab(UUID.randomUUID());
+		User actor = user(UUID.randomUUID(), lab, UserAccountStatus.ACTIVE);
+		stubActiveActor(actor, role(UUID.randomUUID(), AdminRolePolicy.ADMIN_ROLE_CODE));
+		UUID firstId = UUID.fromString("00000000-0000-0000-0000-000000000001");
+		UUID secondId = UUID.fromString("00000000-0000-0000-0000-000000000002");
+		PageRequest pageable = PageRequest.of(0, 2);
+		when(postRepository.findPendingAdminPostIds(any(), any(Pageable.class)))
+				.thenReturn(new PageImpl<>(List.of(firstId, secondId), pageable, 2));
+		when(postRepository.findPendingAdminPostsByIdIn(lab.getId(), List.of(firstId, secondId)))
+				.thenReturn(List.of(post(lab, firstId)));
+
+		IllegalStateException exception = assertThrows(
+				IllegalStateException.class,
+				() -> service.listPendingPosts(new AdminPostService.ListPendingAdminPostsQuery(
+						actor.getId(),
+						0,
+						2)));
+
+		assertEquals("Pending admin post page fetch returned incomplete results.", exception.getMessage());
+	}
+
+	@Test
 	void mapperHandlesNullOptionalRelationsAndPublishedAt() {
 		Post post = new Post();
 		post.setId(UUID.randomUUID());
@@ -313,10 +466,12 @@ class AdminPostServiceTests {
 	@Test
 	void serviceStructureUsesReadOnlyTransaction() throws NoSuchMethodException {
 		assertNotNull(AdminPostService.class.getAnnotation(Service.class));
-		Method method = AdminPostService.class.getMethod("listPosts", AdminPostService.ListAdminPostsQuery.class);
-		Transactional transactional = method.getAnnotation(Transactional.class);
-		assertNotNull(transactional);
-		assertEquals(true, transactional.readOnly());
+		assertReadOnlyTransaction(AdminPostService.class.getMethod(
+				"listPosts",
+				AdminPostService.ListAdminPostsQuery.class));
+		assertReadOnlyTransaction(AdminPostService.class.getMethod(
+				"listPendingPosts",
+				AdminPostService.ListPendingAdminPostsQuery.class));
 	}
 
 	private void stubActiveActor(User actor, Role role) {
@@ -365,6 +520,12 @@ class AdminPostServiceTests {
 		org.mockito.Mockito.clearInvocations(postRepository, userRepository, roleRepository, userRoleRepository);
 	}
 
+	private static void assertReadOnlyTransaction(Method method) {
+		Transactional transactional = method.getAnnotation(Transactional.class);
+		assertNotNull(transactional);
+		assertEquals(true, transactional.readOnly());
+	}
+
 	private static Lab lab(UUID id) {
 		Lab lab = new Lab();
 		lab.setId(id);
@@ -402,6 +563,10 @@ class AdminPostServiceTests {
 	}
 
 	private static Post post(Lab lab) {
+		return post(lab, UUID.randomUUID());
+	}
+
+	private static Post post(Lab lab, UUID postId) {
 		User author = user(UUID.randomUUID(), lab, UserAccountStatus.ACTIVE);
 		Project project = new Project();
 		project.setId(UUID.randomUUID());
@@ -413,7 +578,7 @@ class AdminPostServiceTests {
 		File coverFile = new File();
 		coverFile.setId(UUID.randomUUID());
 		Post post = new Post();
-		post.setId(UUID.randomUUID());
+		post.setId(postId);
 		post.setLab(lab);
 		post.setTitle("Post Title");
 		post.setSlug("post-title");

@@ -54,4 +54,14 @@ public class AdminPostController {
 				projectId,
 				visibility));
 	}
+
+	@GetMapping("/pending")
+	public AdminPostPageResponse listPendingPosts(
+			@RequestParam(required = false) @Min(0) Integer page,
+			@RequestParam(required = false) @Min(1) @Max(100) Integer size) {
+		return adminPostService.listPendingPosts(new AdminPostService.ListPendingAdminPostsQuery(
+				actorResolver.requireActorUserId(),
+				page,
+				size));
+	}
 }

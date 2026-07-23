@@ -149,11 +149,95 @@ class AdminPostControllerTests {
 	}
 
 	@Test
+	void listPendingPostsReturnsPaginationContractAndOmitsSensitiveFields() throws Exception {
+		UUID actorUserId = UUID.randomUUID();
+		UUID postId = UUID.randomUUID();
+		when(actorResolver.requireActorUserId()).thenReturn(actorUserId);
+		when(adminPostService.listPendingPosts(any(AdminPostService.ListPendingAdminPostsQuery.class)))
+				.thenReturn(new AdminPostPageResponse(
+						List.of(summary(postId)),
+						1,
+						10,
+						11,
+						2,
+						false,
+						true));
+
+		mockMvc.perform(get("/api/admin/posts/pending")
+						.param("page", "1")
+						.param("size", "10"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.content[0].id").value(postId.toString()))
+				.andExpect(jsonPath("$.content[0].content").doesNotExist())
+				.andExpect(jsonPath("$.content[0].authorEmail").doesNotExist())
+				.andExpect(jsonPath("$.content[0].reviewNote").doesNotExist())
+				.andExpect(jsonPath("$.page").value(1))
+				.andExpect(jsonPath("$.size").value(10))
+				.andExpect(jsonPath("$.totalElements").value(11))
+				.andExpect(jsonPath("$.totalPages").value(2))
+				.andExpect(jsonPath("$.first").value(false))
+				.andExpect(jsonPath("$.last").value(true))
+				.andExpect(content().string(not(containsString("Full private content"))))
+				.andExpect(content().string(not(containsString("author@example.edu"))));
+
+		ArgumentCaptor<AdminPostService.ListPendingAdminPostsQuery> captor =
+				ArgumentCaptor.forClass(AdminPostService.ListPendingAdminPostsQuery.class);
+		verify(adminPostService).listPendingPosts(captor.capture());
+		assertEquals(actorUserId, captor.getValue().actorUserId());
+		assertEquals(1, captor.getValue().page());
+		assertEquals(10, captor.getValue().size());
+	}
+
+	@Test
+	void listPendingPostsSupportsDefaultPagination() throws Exception {
+		UUID actorUserId = UUID.randomUUID();
+		when(actorResolver.requireActorUserId()).thenReturn(actorUserId);
+		when(adminPostService.listPendingPosts(any(AdminPostService.ListPendingAdminPostsQuery.class)))
+				.thenReturn(new AdminPostPageResponse(List.of(), 0, 20, 0, 0, true, true));
+
+		mockMvc.perform(get("/api/admin/posts/pending"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.page").value(0))
+				.andExpect(jsonPath("$.size").value(20));
+
+		ArgumentCaptor<AdminPostService.ListPendingAdminPostsQuery> captor =
+				ArgumentCaptor.forClass(AdminPostService.ListPendingAdminPostsQuery.class);
+		verify(adminPostService).listPendingPosts(captor.capture());
+		assertEquals(actorUserId, captor.getValue().actorUserId());
+		assertEquals(null, captor.getValue().page());
+		assertEquals(null, captor.getValue().size());
+	}
+
+	@Test
+	void invalidPendingPageAndSizeReturnBadRequestThroughExistingExceptionHandler() throws Exception {
+		when(actorResolver.requireActorUserId()).thenReturn(UUID.randomUUID());
+		when(adminPostService.listPendingPosts(any(AdminPostService.ListPendingAdminPostsQuery.class)))
+				.thenThrow(new InvalidAdminServiceInputException("Page or size is invalid."));
+
+		mockMvc.perform(get("/api/admin/posts/pending").param("page", "-1"))
+				.andExpect(status().isBadRequest());
+		mockMvc.perform(get("/api/admin/posts/pending").param("size", "0"))
+				.andExpect(status().isBadRequest());
+		mockMvc.perform(get("/api/admin/posts/pending").param("size", "101"))
+				.andExpect(status().isBadRequest());
+	}
+
+	@Test
 	void requestWithoutAuthenticatedActorIsUnauthorized() throws Exception {
 		when(actorResolver.requireActorUserId())
 				.thenThrow(new AuthenticationCredentialsNotFoundException("Authentication is required."));
 
 		mockMvc.perform(get("/api/admin/posts"))
+				.andExpect(status().isUnauthorized())
+				.andExpect(jsonPath("$.status").value(401));
+	}
+
+	@Test
+	void pendingRequestWithoutAuthenticatedActorIsUnauthorized() throws Exception {
+		when(actorResolver.requireActorUserId())
+				.thenThrow(new AuthenticationCredentialsNotFoundException("Authentication is required."));
+
+		mockMvc.perform(get("/api/admin/posts/pending"))
 				.andExpect(status().isUnauthorized())
 				.andExpect(jsonPath("$.status").value(401));
 	}
