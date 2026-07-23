@@ -5,11 +5,13 @@ import static org.hamcrest.Matchers.not;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -19,6 +21,7 @@ import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.http.MediaType;
 import org.springframework.security.authentication.AuthenticationCredentialsNotFoundException;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -339,6 +342,148 @@ class AdminPostControllerTests {
 	}
 
 	@Test
+	void createLabAnnouncementReturnsCreatedDetailLocationAndPassesRequestFields() throws Exception {
+		UUID actorUserId = UUID.randomUUID();
+		UUID postId = UUID.randomUUID();
+		when(actorResolver.requireActorUserId()).thenReturn(actorUserId);
+		when(adminPostService.createLabAnnouncement(
+				any(AdminPostService.CreateAdminLabAnnouncementCommand.class)))
+						.thenReturn(createdLabAnnouncementDetail(postId, PostStatus.PUBLISHED));
+
+		mockMvc.perform(post("/api/admin/lab-announcements")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "title": "Lab Symposium",
+								  "summary": "Research week opens",
+								  "content": "Full announcement content",
+								  "visibility": "PUBLIC",
+								  "publishNow": true
+								}
+								"""))
+				.andExpect(status().isCreated())
+				.andExpect(header().string("Location", "/api/admin/lab-announcements/" + postId))
+				.andExpect(jsonPath("$.id").value(postId.toString()))
+				.andExpect(jsonPath("$.title").value("Lab Symposium"))
+				.andExpect(jsonPath("$.summary").value("Research week opens"))
+				.andExpect(jsonPath("$.content").value("Full announcement content"))
+				.andExpect(jsonPath("$.contentType").value("LAB_ANNOUNCEMENT"))
+				.andExpect(jsonPath("$.visibility").value("PUBLIC"))
+				.andExpect(jsonPath("$.moderationStatus").value("PUBLISHED"))
+				.andExpect(jsonPath("$.attachments").isEmpty())
+				.andExpect(jsonPath("$.moderationHistory").isEmpty())
+				.andExpect(jsonPath("$.authorEmail").doesNotExist())
+				.andExpect(jsonPath("$.passwordHash").doesNotExist())
+				.andExpect(jsonPath("$.reviewNote").doesNotExist())
+				.andExpect(jsonPath("$.storagePath").doesNotExist());
+
+		ArgumentCaptor<AdminPostService.CreateAdminLabAnnouncementCommand> captor =
+				ArgumentCaptor.forClass(AdminPostService.CreateAdminLabAnnouncementCommand.class);
+		verify(adminPostService).createLabAnnouncement(captor.capture());
+		assertEquals(actorUserId, captor.getValue().actorUserId());
+		assertEquals("Lab Symposium", captor.getValue().title());
+		assertEquals("Research week opens", captor.getValue().summary());
+		assertEquals("Full announcement content", captor.getValue().content());
+		assertEquals(PostVisibility.PUBLIC, captor.getValue().visibility());
+		assertEquals(true, captor.getValue().publishNow());
+	}
+
+	@Test
+	void createLabAnnouncementPassesMissingPublishNowAsNull() throws Exception {
+		UUID actorUserId = UUID.randomUUID();
+		UUID postId = UUID.randomUUID();
+		when(actorResolver.requireActorUserId()).thenReturn(actorUserId);
+		when(adminPostService.createLabAnnouncement(
+				any(AdminPostService.CreateAdminLabAnnouncementCommand.class)))
+						.thenReturn(createdLabAnnouncementDetail(postId, PostStatus.DRAFT));
+
+		mockMvc.perform(post("/api/admin/lab-announcements")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "title": "Lab Symposium",
+								  "summary": "Research week opens",
+								  "content": "Full announcement content",
+								  "visibility": "LAB_INTERNAL"
+								}
+								"""))
+				.andExpect(status().isCreated())
+				.andExpect(header().string("Location", "/api/admin/lab-announcements/" + postId));
+
+		ArgumentCaptor<AdminPostService.CreateAdminLabAnnouncementCommand> captor =
+				ArgumentCaptor.forClass(AdminPostService.CreateAdminLabAnnouncementCommand.class);
+		verify(adminPostService).createLabAnnouncement(captor.capture());
+		assertEquals(actorUserId, captor.getValue().actorUserId());
+		assertEquals(PostVisibility.LAB_INTERNAL, captor.getValue().visibility());
+		assertEquals(null, captor.getValue().publishNow());
+	}
+
+	@Test
+	void createLabAnnouncementBlankTitleContentOrMissingVisibilityReturnsBadRequestBeforeService() throws Exception {
+		when(actorResolver.requireActorUserId()).thenReturn(UUID.randomUUID());
+
+		mockMvc.perform(post("/api/admin/lab-announcements")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{"title":"  ","content":"Full announcement content","visibility":"PUBLIC"}
+								"""))
+				.andExpect(status().isBadRequest());
+		mockMvc.perform(post("/api/admin/lab-announcements")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{"title":"Lab Symposium","content":"  ","visibility":"PUBLIC"}
+								"""))
+				.andExpect(status().isBadRequest());
+		mockMvc.perform(post("/api/admin/lab-announcements")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{"title":"Lab Symposium","content":"Full announcement content"}
+								"""))
+				.andExpect(status().isBadRequest());
+
+		verify(adminPostService, never()).createLabAnnouncement(
+				any(AdminPostService.CreateAdminLabAnnouncementCommand.class));
+	}
+
+	@Test
+	void createLabAnnouncementMalformedVisibilityReturnsGenericBadRequestBeforeService() throws Exception {
+		when(actorResolver.requireActorUserId()).thenReturn(UUID.randomUUID());
+
+		mockMvc.perform(post("/api/admin/lab-announcements")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "title": "Lab Symposium",
+								  "content": "Full announcement content",
+								  "visibility": "not-a-visibility"
+								}
+								"""))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.message").value("Request validation failed."));
+
+		verify(adminPostService, never()).createLabAnnouncement(
+				any(AdminPostService.CreateAdminLabAnnouncementCommand.class));
+	}
+
+	@Test
+	void createLabAnnouncementWithoutAuthenticatedActorIsUnauthorized() throws Exception {
+		when(actorResolver.requireActorUserId())
+				.thenThrow(new AuthenticationCredentialsNotFoundException("Authentication is required."));
+
+		mockMvc.perform(post("/api/admin/lab-announcements")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "title": "Lab Symposium",
+								  "content": "Full announcement content",
+								  "visibility": "PUBLIC"
+								}
+								"""))
+				.andExpect(status().isUnauthorized())
+				.andExpect(jsonPath("$.status").value(401));
+	}
+
+	@Test
 	void getLabAnnouncementDetailReturnsFullDetailContractAndOmitsSensitiveFields() throws Exception {
 		UUID actorUserId = UUID.randomUUID();
 		UUID postId = UUID.randomUUID();
@@ -642,6 +787,27 @@ class AdminPostControllerTests {
 				OffsetDateTime.parse("2026-07-20T10:15:30Z"),
 				OffsetDateTime.parse("2026-07-19T10:15:30Z"),
 				OffsetDateTime.parse("2026-07-21T10:15:30Z"));
+	}
+
+	private static AdminPostDetailResponse createdLabAnnouncementDetail(UUID postId, PostStatus status) {
+		return new AdminPostDetailResponse(
+				postId,
+				"Lab Symposium",
+				"lab-symposium",
+				"Research week opens",
+				"Full announcement content",
+				PostContentType.LAB_ANNOUNCEMENT,
+				PostVisibility.PUBLIC,
+				status,
+				new AdminPostDetailResponse.AuthorResponse(UUID.randomUUID(), "Author Name"),
+				null,
+				null,
+				null,
+				List.of(),
+				List.of(),
+				status == PostStatus.PUBLISHED ? OffsetDateTime.parse("2026-07-23T08:15:30Z") : null,
+				OffsetDateTime.parse("2026-07-23T08:15:30Z"),
+				OffsetDateTime.parse("2026-07-23T08:15:30Z"));
 	}
 
 	private static AdminPostModerationActionResponse moderationAction(UUID postId, UUID reviewedById) {

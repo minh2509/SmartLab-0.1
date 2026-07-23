@@ -4,8 +4,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -17,11 +19,14 @@ import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
@@ -56,7 +61,9 @@ import com.smartlab.repository.PostRepository;
 import com.smartlab.repository.RoleRepository;
 import com.smartlab.repository.UserRepository;
 import com.smartlab.repository.UserRoleRepository;
+import com.smartlab.service.common.AuditLogService;
 import com.smartlab.service.common.PostWorkflowService;
+import com.smartlab.service.common.SlugService;
 
 class AdminPostServiceTests {
 
@@ -67,6 +74,7 @@ class AdminPostServiceTests {
 	private final RoleRepository roleRepository = mock(RoleRepository.class);
 	private final UserRoleRepository userRoleRepository = mock(UserRoleRepository.class);
 	private final AdminRolePolicy rolePolicy = new AdminRolePolicy(userRepository, roleRepository, userRoleRepository);
+	private final AuditLogService auditLogService = mock(AuditLogService.class);
 	private final Clock clock = Clock.fixed(Instant.parse("2026-07-23T08:15:30Z"), ZoneOffset.UTC);
 	private final AdminPostService service = new AdminPostService(
 			postRepository,
@@ -75,6 +83,8 @@ class AdminPostServiceTests {
 			rolePolicy,
 			new PostWorkflowService(),
 			new AdminPostApiMapper(),
+			new SlugService(),
+			auditLogService,
 			clock);
 
 	@Test
@@ -848,6 +858,370 @@ class AdminPostServiceTests {
 	}
 
 	@Test
+	void createLabAnnouncementRejectsNullCommandAndInvalidInputs() {
+		assertThrows(
+				InvalidAdminServiceInputException.class,
+				() -> service.createLabAnnouncement(null));
+		assertThrows(
+				InvalidAdminServiceInputException.class,
+				() -> service.createLabAnnouncement(new AdminPostService.CreateAdminLabAnnouncementCommand(
+						null,
+						"Lab Symposium",
+						null,
+						"Full announcement content",
+						PostVisibility.PUBLIC,
+						false)));
+
+		Lab lab = lab(UUID.randomUUID());
+		User actor = user(UUID.randomUUID(), lab, UserAccountStatus.ACTIVE);
+		stubActiveActor(actor, role(UUID.randomUUID(), AdminRolePolicy.ADMIN_ROLE_CODE));
+
+		assertThrows(
+				InvalidAdminServiceInputException.class,
+				() -> service.createLabAnnouncement(new AdminPostService.CreateAdminLabAnnouncementCommand(
+						actor.getId(),
+						" ",
+						null,
+						"Full announcement content",
+						PostVisibility.PUBLIC,
+						false)));
+		assertThrows(
+				InvalidAdminServiceInputException.class,
+				() -> service.createLabAnnouncement(new AdminPostService.CreateAdminLabAnnouncementCommand(
+						actor.getId(),
+						"A".repeat(256),
+						null,
+						"Full announcement content",
+						PostVisibility.PUBLIC,
+						false)));
+		assertThrows(
+				InvalidAdminServiceInputException.class,
+				() -> service.createLabAnnouncement(new AdminPostService.CreateAdminLabAnnouncementCommand(
+						actor.getId(),
+						"Lab Symposium",
+						null,
+						" ",
+						PostVisibility.PUBLIC,
+						false)));
+		assertThrows(
+				InvalidAdminServiceInputException.class,
+				() -> service.createLabAnnouncement(new AdminPostService.CreateAdminLabAnnouncementCommand(
+						actor.getId(),
+						"Lab Symposium",
+						null,
+						"Full announcement content",
+						null,
+						false)));
+		assertThrows(
+				InvalidAdminServiceInputException.class,
+				() -> service.createLabAnnouncement(new AdminPostService.CreateAdminLabAnnouncementCommand(
+						actor.getId(),
+						"Lab Symposium",
+						null,
+						"Full announcement content",
+						PostVisibility.PROJECT_INTERNAL,
+						false)));
+		verify(postRepository, never()).saveAndFlush(any(Post.class));
+		verify(auditLogService, never()).record(any(AuditLogService.AuditCommand.class));
+	}
+
+	@Test
+	void createLabAnnouncementRejectsActorsWithoutCurrentDatabaseAdminRole() {
+		UUID missingActorId = UUID.randomUUID();
+		when(userRepository.findById(missingActorId)).thenReturn(Optional.empty());
+		assertThrows(
+				ForbiddenAdminOperationException.class,
+				() -> service.createLabAnnouncement(command(missingActorId, false)));
+
+		Lab lab = lab(UUID.randomUUID());
+		User memberActor = user(UUID.randomUUID(), lab, UserAccountStatus.ACTIVE);
+		stubActiveActor(memberActor, role(UUID.randomUUID(), AdminRolePolicy.MEMBER_ROLE_CODE));
+		assertThrows(
+				ForbiddenAdminOperationException.class,
+				() -> service.createLabAnnouncement(command(memberActor.getId(), false)));
+
+		User leaderActor = user(UUID.randomUUID(), lab, UserAccountStatus.ACTIVE);
+		stubActiveActor(leaderActor, role(UUID.randomUUID(), AdminRolePolicy.LEADER_ROLE_CODE));
+		assertThrows(
+				ForbiddenAdminOperationException.class,
+				() -> service.createLabAnnouncement(command(leaderActor.getId(), false)));
+
+		User revokedActor = user(UUID.randomUUID(), lab, UserAccountStatus.ACTIVE);
+		when(userRepository.findById(revokedActor.getId())).thenReturn(Optional.of(revokedActor));
+		when(userRoleRepository.findByUserAndStatus(revokedActor, UserRoleStatus.ACTIVE)).thenReturn(List.of());
+		assertThrows(
+				ForbiddenAdminOperationException.class,
+				() -> service.createLabAnnouncement(command(revokedActor.getId(), false)));
+
+		User inactiveActor = user(UUID.randomUUID(), lab, UserAccountStatus.LOCKED);
+		stubActiveActor(inactiveActor, role(UUID.randomUUID(), AdminRolePolicy.ADMIN_ROLE_CODE));
+		assertThrows(
+				ForbiddenAdminOperationException.class,
+				() -> service.createLabAnnouncement(command(inactiveActor.getId(), false)));
+
+		verify(postRepository, never()).saveAndFlush(any(Post.class));
+		verify(auditLogService, never()).record(any(AuditLogService.AuditCommand.class));
+	}
+
+	@Test
+	void createLabAnnouncementAdminCreatesDraftWithNormalizedFieldsAndSafeEmptyDetail() {
+		Lab lab = lab(UUID.randomUUID());
+		User actor = user(UUID.randomUUID(), lab, UserAccountStatus.ACTIVE);
+		stubActiveActor(actor, role(UUID.randomUUID(), AdminRolePolicy.ADMIN_ROLE_CODE));
+		UUID savedId = UUID.randomUUID();
+		stubSaveAndFlush(savedId);
+
+		var response = service.createLabAnnouncement(new AdminPostService.CreateAdminLabAnnouncementCommand(
+				actor.getId(),
+				"  Lab Symposium  ",
+				"  Research week opens  ",
+				"  Full announcement content  ",
+				PostVisibility.LAB_INTERNAL,
+				false));
+
+		ArgumentCaptor<Post> postCaptor = ArgumentCaptor.forClass(Post.class);
+		verify(postRepository).saveAndFlush(postCaptor.capture());
+		Post savedPost = postCaptor.getValue();
+		assertEquals(savedId, response.id());
+		assertEquals(lab, savedPost.getLab());
+		assertEquals(actor, savedPost.getAuthor());
+		assertNull(savedPost.getProject());
+		assertNull(savedPost.getCategory());
+		assertNull(savedPost.getCoverFile());
+		assertNull(savedPost.getReviewedBy());
+		assertNull(savedPost.getReviewedAt());
+		assertNull(savedPost.getReviewNote());
+		assertNull(savedPost.getDeletedAt());
+		assertEquals("Lab Symposium", savedPost.getTitle());
+		assertEquals("lab-symposium", savedPost.getSlug());
+		assertEquals("Research week opens", savedPost.getSummary());
+		assertEquals("Full announcement content", savedPost.getContent());
+		assertEquals(PostContentType.LAB_ANNOUNCEMENT, savedPost.getContentType());
+		assertEquals(PostVisibility.LAB_INTERNAL, savedPost.getVisibility());
+		assertEquals(PostStatus.DRAFT, savedPost.getModerationStatus());
+		assertNull(savedPost.getPublishedAt());
+		assertEquals(PostContentType.LAB_ANNOUNCEMENT, response.contentType());
+		assertEquals(PostStatus.DRAFT, response.moderationStatus());
+		assertEquals(List.of(), response.attachments());
+		assertEquals(List.of(), response.moderationHistory());
+		verify(auditLogService).record(any(AuditLogService.AuditCommand.class));
+	}
+
+	@Test
+	void createLabAnnouncementAcceptsSuperAdminAndPublishNowNullDefaultsToDraft() {
+		Lab lab = lab(UUID.randomUUID());
+		User actor = user(UUID.randomUUID(), lab, UserAccountStatus.ACTIVE);
+		stubActiveActor(actor, role(UUID.randomUUID(), AdminRolePolicy.SUPER_ADMIN_ROLE_CODE));
+		stubSaveAndFlush(UUID.randomUUID());
+
+		var response = service.createLabAnnouncement(new AdminPostService.CreateAdminLabAnnouncementCommand(
+				actor.getId(),
+				"Lab Symposium",
+				null,
+				"Full announcement content",
+				PostVisibility.PRIVATE,
+				null));
+
+		ArgumentCaptor<Post> postCaptor = ArgumentCaptor.forClass(Post.class);
+		verify(postRepository).saveAndFlush(postCaptor.capture());
+		assertEquals(PostStatus.DRAFT, postCaptor.getValue().getModerationStatus());
+		assertNull(postCaptor.getValue().getPublishedAt());
+		assertEquals(PostStatus.DRAFT, response.moderationStatus());
+	}
+
+	@Test
+	void createLabAnnouncementPublishNowTrueCreatesPublishedAnnouncementWithFixedClock() {
+		Lab lab = lab(UUID.randomUUID());
+		User actor = user(UUID.randomUUID(), lab, UserAccountStatus.ACTIVE);
+		stubActiveActor(actor, role(UUID.randomUUID(), AdminRolePolicy.ADMIN_ROLE_CODE));
+		stubSaveAndFlush(UUID.randomUUID());
+
+		var response = service.createLabAnnouncement(new AdminPostService.CreateAdminLabAnnouncementCommand(
+				actor.getId(),
+				"Lab Symposium",
+				null,
+				"Full announcement content",
+				PostVisibility.PUBLIC,
+				true));
+
+		OffsetDateTime expectedPublishedAt = OffsetDateTime.parse("2026-07-23T08:15:30Z");
+		ArgumentCaptor<Post> postCaptor = ArgumentCaptor.forClass(Post.class);
+		verify(postRepository).saveAndFlush(postCaptor.capture());
+		assertEquals(PostStatus.PUBLISHED, postCaptor.getValue().getModerationStatus());
+		assertEquals(expectedPublishedAt, postCaptor.getValue().getPublishedAt());
+		assertEquals(PostStatus.PUBLISHED, response.moderationStatus());
+		assertEquals(expectedPublishedAt, response.publishedAt());
+	}
+
+	@Test
+	void createLabAnnouncementNormalizesBlankAndNullSummaryToNull() {
+		Lab lab = lab(UUID.randomUUID());
+		User actor = user(UUID.randomUUID(), lab, UserAccountStatus.ACTIVE);
+		stubActiveActor(actor, role(UUID.randomUUID(), AdminRolePolicy.ADMIN_ROLE_CODE));
+		stubSaveAndFlush(UUID.randomUUID());
+
+		service.createLabAnnouncement(new AdminPostService.CreateAdminLabAnnouncementCommand(
+				actor.getId(),
+				"Lab Symposium",
+				"  ",
+				"Full announcement content",
+				PostVisibility.PUBLIC,
+				false));
+		ArgumentCaptor<Post> firstPostCaptor = ArgumentCaptor.forClass(Post.class);
+		verify(postRepository).saveAndFlush(firstPostCaptor.capture());
+		assertNull(firstPostCaptor.getValue().getSummary());
+
+		org.mockito.Mockito.clearInvocations(postRepository, auditLogService);
+		stubSaveAndFlush(UUID.randomUUID());
+		service.createLabAnnouncement(new AdminPostService.CreateAdminLabAnnouncementCommand(
+				actor.getId(),
+				"Lab Symposium",
+				null,
+				"Full announcement content",
+				PostVisibility.PUBLIC,
+				false));
+		ArgumentCaptor<Post> secondPostCaptor = ArgumentCaptor.forClass(Post.class);
+		verify(postRepository).saveAndFlush(secondPostCaptor.capture());
+		assertNull(secondPostCaptor.getValue().getSummary());
+	}
+
+	@Test
+	void createLabAnnouncementGeneratesUniqueSlugWithinActorLabUsingNextSuffix() {
+		Lab lab = lab(UUID.randomUUID());
+		User actor = user(UUID.randomUUID(), lab, UserAccountStatus.ACTIVE);
+		stubActiveActor(actor, role(UUID.randomUUID(), AdminRolePolicy.ADMIN_ROLE_CODE));
+		when(postRepository.existsByLabAndSlug(lab, "lab-symposium")).thenReturn(true);
+		when(postRepository.existsByLabAndSlug(lab, "lab-symposium-2")).thenReturn(false);
+		stubSaveAndFlush(UUID.randomUUID());
+
+		service.createLabAnnouncement(command(actor.getId(), false));
+
+		ArgumentCaptor<Post> postCaptor = ArgumentCaptor.forClass(Post.class);
+		verify(postRepository).existsByLabAndSlug(lab, "lab-symposium");
+		verify(postRepository).existsByLabAndSlug(lab, "lab-symposium-2");
+		verify(postRepository).saveAndFlush(postCaptor.capture());
+		assertEquals("lab-symposium-2", postCaptor.getValue().getSlug());
+	}
+
+	@Test
+	void createLabAnnouncementPersistsBeforeAuditAndRecordsSafeAuditCommand() {
+		Lab lab = lab(UUID.randomUUID());
+		User actor = user(UUID.randomUUID(), lab, UserAccountStatus.ACTIVE);
+		stubActiveActor(actor, role(UUID.randomUUID(), AdminRolePolicy.ADMIN_ROLE_CODE));
+		UUID savedId = UUID.randomUUID();
+		stubSaveAndFlush(savedId);
+
+		service.createLabAnnouncement(new AdminPostService.CreateAdminLabAnnouncementCommand(
+				actor.getId(),
+				"Lab Symposium",
+				null,
+				"Full announcement content",
+				PostVisibility.PUBLIC,
+				true));
+
+		InOrder inOrder = inOrder(postRepository, auditLogService);
+		inOrder.verify(postRepository).saveAndFlush(any(Post.class));
+		ArgumentCaptor<AuditLogService.AuditCommand> auditCaptor =
+				ArgumentCaptor.forClass(AuditLogService.AuditCommand.class);
+		inOrder.verify(auditLogService).record(auditCaptor.capture());
+		AuditLogService.AuditCommand command = auditCaptor.getValue();
+		assertEquals(actor.getId(), command.actorId());
+		assertEquals("CREATE_LAB_ANNOUNCEMENT", command.action());
+		assertEquals("LAB_ANNOUNCEMENT", command.entityType());
+		assertEquals(savedId, command.entityId());
+		assertNull(command.oldValue());
+		Map<?, ?> newValue = (Map<?, ?>) command.newValue();
+		assertEquals(List.of(
+				"title",
+				"slug",
+				"contentType",
+				"visibility",
+				"moderationStatus",
+				"publishedAt"), List.copyOf(newValue.keySet()));
+		assertEquals("Lab Symposium", newValue.get("title"));
+		assertEquals("lab-symposium", newValue.get("slug"));
+		assertEquals(PostContentType.LAB_ANNOUNCEMENT, newValue.get("contentType"));
+		assertEquals(PostVisibility.PUBLIC, newValue.get("visibility"));
+		assertEquals(PostStatus.PUBLISHED, newValue.get("moderationStatus"));
+		assertEquals(OffsetDateTime.parse("2026-07-23T08:15:30Z"), newValue.get("publishedAt"));
+		assertFalse(newValue.containsKey("content"));
+		assertFalse(newValue.containsKey("authorEmail"));
+	}
+
+	@Test
+	void createLabAnnouncementDoesNotAuditWhenPersistenceFailsAndConvertsSlugConflict() {
+		Lab lab = lab(UUID.randomUUID());
+		User actor = user(UUID.randomUUID(), lab, UserAccountStatus.ACTIVE);
+		stubActiveActor(actor, role(UUID.randomUUID(), AdminRolePolicy.ADMIN_ROLE_CODE));
+		org.hibernate.exception.ConstraintViolationException constraintFailure =
+				hibernateConstraintViolation("uq_posts_lab_slug");
+		DataIntegrityViolationException persistenceFailure = new DataIntegrityViolationException(
+				"constraint failed",
+				constraintFailure);
+		when(postRepository.saveAndFlush(any(Post.class))).thenThrow(persistenceFailure);
+
+		ConflictingAdminOperationException exception = assertThrows(
+				ConflictingAdminOperationException.class,
+				() -> service.createLabAnnouncement(command(actor.getId(), false)));
+
+		assertEquals("A lab announcement with the generated slug already exists.", exception.getMessage());
+		verify(auditLogService, never()).record(any(AuditLogService.AuditCommand.class));
+	}
+
+	@Test
+	void createLabAnnouncementRethrowsDifferentHibernateConstraintWithoutAudit() {
+		Lab lab = lab(UUID.randomUUID());
+		User actor = user(UUID.randomUUID(), lab, UserAccountStatus.ACTIVE);
+		stubActiveActor(actor, role(UUID.randomUUID(), AdminRolePolicy.ADMIN_ROLE_CODE));
+		DataIntegrityViolationException failure = new DataIntegrityViolationException(
+				"constraint failed",
+				hibernateConstraintViolation("fk_posts_author"));
+		when(postRepository.saveAndFlush(any(Post.class))).thenThrow(failure);
+
+		DataIntegrityViolationException exception = assertThrows(
+				DataIntegrityViolationException.class,
+				() -> service.createLabAnnouncement(command(actor.getId(), false)));
+
+		assertSame(failure, exception);
+		verify(auditLogService, never()).record(any(AuditLogService.AuditCommand.class));
+	}
+
+	@Test
+	void createLabAnnouncementRethrowsHibernateConstraintWithNullNameWithoutAudit() {
+		Lab lab = lab(UUID.randomUUID());
+		User actor = user(UUID.randomUUID(), lab, UserAccountStatus.ACTIVE);
+		stubActiveActor(actor, role(UUID.randomUUID(), AdminRolePolicy.ADMIN_ROLE_CODE));
+		DataIntegrityViolationException failure = new DataIntegrityViolationException(
+				"constraint failed",
+				hibernateConstraintViolation(null));
+		when(postRepository.saveAndFlush(any(Post.class))).thenThrow(failure);
+
+		DataIntegrityViolationException exception = assertThrows(
+				DataIntegrityViolationException.class,
+				() -> service.createLabAnnouncement(command(actor.getId(), false)));
+
+		assertSame(failure, exception);
+		verify(auditLogService, never()).record(any(AuditLogService.AuditCommand.class));
+	}
+
+
+	@Test
+	void createLabAnnouncementRethrowsPlainDataIntegrityFailureWithoutAudit() {
+		Lab lab = lab(UUID.randomUUID());
+		User actor = user(UUID.randomUUID(), lab, UserAccountStatus.ACTIVE);
+		stubActiveActor(actor, role(UUID.randomUUID(), AdminRolePolicy.ADMIN_ROLE_CODE));
+		DataIntegrityViolationException failure = new DataIntegrityViolationException("not-null failed");
+		when(postRepository.saveAndFlush(any(Post.class))).thenThrow(failure);
+
+		DataIntegrityViolationException exception = assertThrows(
+				DataIntegrityViolationException.class,
+				() -> service.createLabAnnouncement(command(actor.getId(), false)));
+
+		assertSame(failure, exception);
+		verify(auditLogService, never()).record(any(AuditLogService.AuditCommand.class));
+	}
+
+	@Test
 	void approvePostRejectsNullCommandActorAndPostId() {
 		assertThrows(
 				InvalidAdminServiceInputException.class,
@@ -1077,14 +1451,54 @@ class AdminPostServiceTests {
 				"getLabAnnouncementDetail",
 				AdminPostService.GetAdminLabAnnouncementDetailQuery.class));
 		assertMutationTransaction(AdminPostService.class.getMethod(
+				"createLabAnnouncement",
+				AdminPostService.CreateAdminLabAnnouncementCommand.class));
+		assertMutationTransaction(AdminPostService.class.getMethod(
 				"approvePost",
 				AdminPostService.ApproveAdminPostCommand.class));
+	}
+
+	@Test
+	void serviceDoesNotIntroduceNotificationDependencyForLabAnnouncementCreate() {
+		assertFalse(java.util.Arrays.stream(AdminPostService.class.getDeclaredFields())
+				.anyMatch(field -> field.getType().getSimpleName().contains("Notification")));
+		assertFalse(java.util.Arrays.stream(AdminPostService.class.getConstructors())
+				.flatMap(constructor -> java.util.Arrays.stream(constructor.getParameterTypes()))
+				.anyMatch(type -> type.getSimpleName().contains("Notification")));
 	}
 
 	private void stubActiveActor(User actor, Role role) {
 		when(userRepository.findById(actor.getId())).thenReturn(Optional.of(actor));
 		when(userRoleRepository.findByUserAndStatus(actor, UserRoleStatus.ACTIVE))
 				.thenReturn(List.of(userRole(actor, role)));
+	}
+
+	private void stubSaveAndFlush(UUID savedId) {
+		when(postRepository.saveAndFlush(any(Post.class))).thenAnswer(invocation -> {
+			Post post = invocation.getArgument(0);
+			post.setId(savedId);
+			post.setCreatedAt(OffsetDateTime.parse("2026-07-23T08:15:30Z"));
+			post.setUpdatedAt(OffsetDateTime.parse("2026-07-23T08:15:30Z"));
+			return post;
+		});
+	}
+
+	private static AdminPostService.CreateAdminLabAnnouncementCommand command(UUID actorUserId, Boolean publishNow) {
+		return new AdminPostService.CreateAdminLabAnnouncementCommand(
+				actorUserId,
+				"Lab Symposium",
+				"Research week opens",
+				"Full announcement content",
+				PostVisibility.PUBLIC,
+				publishNow);
+	}
+
+	private static org.hibernate.exception.ConstraintViolationException hibernateConstraintViolation(
+			String constraintName) {
+		org.hibernate.exception.ConstraintViolationException exception =
+				mock(org.hibernate.exception.ConstraintViolationException.class);
+		when(exception.getConstraintName()).thenReturn(constraintName);
+		return exception;
 	}
 
 	private void assertKeywordPattern(String keyword, String expectedPattern) {
