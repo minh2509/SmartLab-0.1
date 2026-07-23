@@ -110,6 +110,20 @@ class AdminApiSecurityTests {
 	}
 
 	@Test
+	void adminPostListUsesExistingAdminAuthorizationRules() throws Exception {
+		mockMvc.perform(get("/api/admin/posts"))
+				.andExpect(status().isUnauthorized());
+		mockMvc.perform(get("/api/admin/posts").header("Authorization", "Bearer " + loginToken("member@example.test")))
+				.andExpect(status().isForbidden());
+		mockMvc.perform(get("/api/admin/posts").header("Authorization", "Bearer " + loginToken("leader@example.test")))
+				.andExpect(status().isForbidden());
+		mockMvc.perform(get("/api/admin/posts").header("Authorization", "Bearer " + loginToken("admin@example.test")))
+				.andExpect(status().isOk());
+		mockMvc.perform(get("/api/admin/posts").header("Authorization", "Bearer " + loginToken("super@example.test")))
+				.andExpect(status().isOk());
+	}
+
+	@Test
 	void jwtNonAdminRolesReceiveJsonForbidden() throws Exception {
 		for (String username : java.util.List.of("leader@example.test", "member@example.test", "noroles@example.test")) {
 			mockMvc.perform(get("/api/admin/probe").header("Authorization", "Bearer " + loginToken(username)))
@@ -243,6 +257,11 @@ class AdminApiSecurityTests {
 		@GetMapping("/api/admin/probe")
 		Map<String, String> admin() {
 			return Map.of("ok", "admin");
+		}
+
+		@GetMapping("/api/admin/posts")
+		Map<String, String> adminPosts() {
+			return Map.of("ok", "admin-posts");
 		}
 
 		@PostMapping("/api/admin/probe")

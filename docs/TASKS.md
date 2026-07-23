@@ -97,6 +97,45 @@ cd backend
 SPRING_PROFILES_ACTIVE=nodb ./mvnw clean test
 ```
 
+## ADM-055: Admin Post List and Search API
+
+- Name: List and search posts for administrators
+- Assignee: Minh
+- Status: `READY_FOR_REVIEW`
+- Progress: 100%
+- Branch: `feature/minh-admin-post-query`
+- Endpoint: `GET /api/admin/posts`
+- Test result: 189 tests run, 0 failures, 0 errors; BUILD SUCCESS
+- Runtime result: PostgreSQL 18.4 contract verification passed
+- Notes: Implemented an ADMIN/SUPER_ADMIN-only, lab-scoped post listing API with pagination and optional keyword, status, content type, author, project, and visibility filters.
+- Notes: Soft-deleted posts are excluded; ordering is `createdAt DESC, id DESC`.
+- Notes: Fixed the nullable keyword PostgreSQL failure by normalizing a lowercase LIKE pattern in the service instead of applying `lower(...)` to a nullable query parameter.
+- Notes: Runtime fixture was removed successfully; remaining fixture labs, users, and posts are all zero.
+
+### Scope
+
+- Admin post list controller
+- Paginated response and post summary DTOs
+- Admin post service and mapper
+- Lab-scoped repository query and explicit count query
+- Keyword and optional filters
+- Soft-delete exclusion
+- Stable pagination ordering
+- Controller, service, repository, structure, and security tests
+
+### Verification
+
+- Targeted ADM-055 tests: PASS
+- Full test suite: 189 passed, 0 failures
+- `./mvnw compile`: PASS
+- `git diff --check`: PASS
+- PostgreSQL runtime API assertions: PASS
+- Unauthorized request: HTTP 401
+- ADMIN request: HTTP 200
+- Invalid pagination and enum input: HTTP 400
+- Cross-lab and soft-deleted posts excluded
+- Runtime fixture cleanup: PASS
+
 ## DB-001: Review PostgreSQL Source Schema
 
 - Name: Review PostgreSQL source schema

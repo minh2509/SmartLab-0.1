@@ -23,6 +23,7 @@ class AdminApiStructureTests {
 
 	@Test
 	void controllersAreRestAdaptersWithoutRepositoryDependenciesAndInactiveInNodb() {
+		assertControllerBoundary(AdminPostController.class);
 		assertControllerBoundary(AdminUserController.class);
 		assertControllerBoundary(AdminRoleController.class);
 		assertControllerBoundary(AdminUserRoleController.class);
