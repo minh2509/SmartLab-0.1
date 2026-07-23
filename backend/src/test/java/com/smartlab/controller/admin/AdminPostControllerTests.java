@@ -5,10 +5,12 @@ import static org.hamcrest.Matchers.not;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -19,6 +21,7 @@ import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.http.MediaType;
 import org.springframework.security.authentication.AuthenticationCredentialsNotFoundException;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -409,6 +412,148 @@ class AdminPostControllerTests {
 						.thenThrow(new ResourceNotFoundException("Post was not found."));
 
 		mockMvc.perform(get("/api/admin/lab-announcements/{postId}", UUID.randomUUID()))
+				.andExpect(status().isNotFound())
+				.andExpect(jsonPath("$.status").value(404))
+				.andExpect(jsonPath("$.message").value("Post was not found."));
+	}
+
+	@Test
+	void updateLabAnnouncementReturnsDetailContractAndPassesCommand() throws Exception {
+		UUID actorUserId = UUID.randomUUID();
+		UUID postId = UUID.randomUUID();
+		when(actorResolver.requireActorUserId()).thenReturn(actorUserId);
+		when(adminPostService.updateLabAnnouncement(
+				any(AdminPostService.UpdateAdminLabAnnouncementCommand.class)))
+						.thenReturn(detail(postId, false, PostContentType.LAB_ANNOUNCEMENT));
+
+		mockMvc.perform(put("/api/admin/lab-announcements/{postId}", postId)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "title": "Updated Announcement",
+								  "summary": "Updated summary",
+								  "content": "Updated full content",
+								  "visibility": "LAB_INTERNAL"
+								}
+								"""))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.id").value(postId.toString()))
+				.andExpect(jsonPath("$.content").value("Full private content"))
+				.andExpect(jsonPath("$.contentType").value("LAB_ANNOUNCEMENT"))
+				.andExpect(jsonPath("$.author.fullName").value("Author Name"))
+				.andExpect(jsonPath("$.attachments[0].originalName").value("attachment.pdf"))
+				.andExpect(jsonPath("$.moderationHistory[0].action").value("SUBMIT"))
+				.andExpect(jsonPath("$.authorEmail").doesNotExist())
+				.andExpect(jsonPath("$.email").doesNotExist())
+				.andExpect(jsonPath("$.passwordHash").doesNotExist())
+				.andExpect(jsonPath("$.reviewNote").doesNotExist())
+				.andExpect(jsonPath("$.storedName").doesNotExist())
+				.andExpect(jsonPath("$.storagePath").doesNotExist())
+				.andExpect(jsonPath("$.deletedAt").doesNotExist())
+				.andExpect(content().string(not(containsString("\"authorEmail\""))))
+				.andExpect(content().string(not(containsString("\"email\""))))
+				.andExpect(content().string(not(containsString("\"passwordHash\""))))
+				.andExpect(content().string(not(containsString("\"reviewNote\""))))
+				.andExpect(content().string(not(containsString("\"storedName\""))))
+				.andExpect(content().string(not(containsString("\"storagePath\""))))
+				.andExpect(content().string(not(containsString("\"deletedAt\""))));
+
+		ArgumentCaptor<AdminPostService.UpdateAdminLabAnnouncementCommand> captor =
+				ArgumentCaptor.forClass(AdminPostService.UpdateAdminLabAnnouncementCommand.class);
+		verify(adminPostService).updateLabAnnouncement(captor.capture());
+		assertEquals(actorUserId, captor.getValue().actorUserId());
+		assertEquals(postId, captor.getValue().postId());
+		assertEquals("Updated Announcement", captor.getValue().title());
+		assertEquals("Updated summary", captor.getValue().summary());
+		assertEquals("Updated full content", captor.getValue().content());
+		assertEquals(PostVisibility.LAB_INTERNAL, captor.getValue().visibility());
+	}
+
+	@Test
+	void invalidUpdateLabAnnouncementRequestReturnsBadRequestBeforeService() throws Exception {
+		UUID postId = UUID.randomUUID();
+		when(actorResolver.requireActorUserId()).thenReturn(UUID.randomUUID());
+
+		mockMvc.perform(put("/api/admin/lab-announcements/{postId}", postId)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{"title":" ","content":"Updated full content","visibility":"PUBLIC"}
+								"""))
+				.andExpect(status().isBadRequest());
+		mockMvc.perform(put("/api/admin/lab-announcements/{postId}", postId)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{"title":"%s","content":"Updated full content","visibility":"PUBLIC"}
+								""".formatted("A".repeat(256))))
+				.andExpect(status().isBadRequest());
+		mockMvc.perform(put("/api/admin/lab-announcements/{postId}", postId)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{"title":"Updated Announcement","content":" ","visibility":"PUBLIC"}
+								"""))
+				.andExpect(status().isBadRequest());
+		mockMvc.perform(put("/api/admin/lab-announcements/{postId}", postId)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{"title":"Updated Announcement","content":"Updated full content"}
+								"""))
+				.andExpect(status().isBadRequest());
+
+		verify(adminPostService, never()).updateLabAnnouncement(
+				any(AdminPostService.UpdateAdminLabAnnouncementCommand.class));
+	}
+
+	@Test
+	void malformedUpdateLabAnnouncementPostIdReturnsBadRequest() throws Exception {
+		when(actorResolver.requireActorUserId()).thenReturn(UUID.randomUUID());
+
+		mockMvc.perform(put("/api/admin/lab-announcements/not-a-uuid")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "title": "Updated Announcement",
+								  "content": "Updated full content",
+								  "visibility": "PUBLIC"
+								}
+								"""))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.message").value("Request validation failed."));
+	}
+
+	@Test
+	void updateLabAnnouncementWithoutAuthenticatedActorIsUnauthorized() throws Exception {
+		when(actorResolver.requireActorUserId())
+				.thenThrow(new AuthenticationCredentialsNotFoundException("Authentication is required."));
+
+		mockMvc.perform(put("/api/admin/lab-announcements/{postId}", UUID.randomUUID())
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "title": "Updated Announcement",
+								  "content": "Updated full content",
+								  "visibility": "PUBLIC"
+								}
+								"""))
+				.andExpect(status().isUnauthorized())
+				.andExpect(jsonPath("$.status").value(401));
+	}
+
+	@Test
+	void updateLabAnnouncementMissingResourceUsesGenericNotFoundMessage() throws Exception {
+		when(actorResolver.requireActorUserId()).thenReturn(UUID.randomUUID());
+		when(adminPostService.updateLabAnnouncement(
+				any(AdminPostService.UpdateAdminLabAnnouncementCommand.class)))
+						.thenThrow(new ResourceNotFoundException("Post was not found."));
+
+		mockMvc.perform(put("/api/admin/lab-announcements/{postId}", UUID.randomUUID())
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "title": "Updated Announcement",
+								  "content": "Updated full content",
+								  "visibility": "PUBLIC"
+								}
+								"""))
 				.andExpect(status().isNotFound())
 				.andExpect(jsonPath("$.status").value(404))
 				.andExpect(jsonPath("$.message").value("Post was not found."));
