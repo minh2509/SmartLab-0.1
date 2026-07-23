@@ -1,14 +1,19 @@
 package com.smartlab.controller.admin;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.util.Arrays;
+import java.util.List;
+import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.context.annotation.Profile;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.smartlab.dto.request.admin.CreateAdminUserRequest;
@@ -20,6 +25,9 @@ import com.smartlab.dto.response.admin.AdminRoleResponse;
 import com.smartlab.dto.response.admin.AdminSystemRoleResponse;
 import com.smartlab.dto.response.admin.AdminUserResponse;
 import com.smartlab.dto.response.admin.AdminUserRoleResponse;
+import com.smartlab.entity.Post;
+import com.smartlab.entity.PostModerationLog;
+import com.smartlab.entity.User;
 
 class AdminApiStructureTests {
 
@@ -48,6 +56,48 @@ class AdminApiStructureTests {
 		assertNoCredentialComponent(AdminSystemRoleResponse.class);
 		assertNoCredentialComponent(AdminPermissionResponse.class);
 		assertNoCredentialComponent(AdminUserRoleResponse.class);
+		assertNoCredentialComponent(AdminPostDetailResponse.class);
+		assertNoCredentialComponent(AdminPostDetailResponse.AuthorResponse.class);
+		assertNoCredentialComponent(AdminPostDetailResponse.AttachmentResponse.class);
+		assertNoCredentialComponent(AdminPostDetailResponse.ModerationHistoryResponse.class);
+		assertFalse(hasRecordComponent(AdminPostDetailResponse.class, "reviewNote"));
+		assertFalse(hasRecordComponent(AdminPostDetailResponse.FileResponse.class, "storedName"));
+		assertFalse(hasRecordComponent(AdminPostDetailResponse.FileResponse.class, "storagePath"));
+		assertFalse(hasRecordComponent(AdminPostDetailResponse.FileResponse.class, "deletedAt"));
+		assertFalse(hasRecordComponent(AdminPostDetailResponse.AttachmentResponse.class, "storedName"));
+		assertFalse(hasRecordComponent(AdminPostDetailResponse.AttachmentResponse.class, "storagePath"));
+		assertFalse(hasRecordComponent(AdminPostDetailResponse.AttachmentResponse.class, "deletedAt"));
+		assertTrue(AdminPostModerationActionResponse.class.isRecord());
+		assertEquals(
+				List.of(
+						"postId",
+						"action",
+						"fromStatus",
+						"toStatus",
+						"moderationStatus",
+						"reviewedById",
+						"reviewedByName",
+						"reviewedAt"),
+				Arrays.stream(AdminPostModerationActionResponse.class.getRecordComponents())
+						.map(component -> component.getName())
+						.toList());
+		assertNoCredentialComponent(AdminPostModerationActionResponse.class);
+		assertNoEntityComponent(AdminPostModerationActionResponse.class);
+		assertFalse(hasRecordComponent(AdminPostModerationActionResponse.class, "email"));
+		assertFalse(hasRecordComponent(AdminPostModerationActionResponse.class, "username"));
+		assertFalse(hasRecordComponent(AdminPostModerationActionResponse.class, "reviewNote"));
+		assertFalse(hasRecordComponent(AdminPostModerationActionResponse.class, "storagePath"));
+		assertFalse(hasRecordComponent(AdminPostModerationActionResponse.class, "deletedAt"));
+	}
+
+	@Test
+	void adminPostApproveRouteReturnsFocusedResponseDto() throws NoSuchMethodException {
+		Method approveMethod = AdminPostController.class.getMethod("approvePost", UUID.class);
+		PostMapping postMapping = approveMethod.getAnnotation(PostMapping.class);
+
+		assertNotNull(postMapping);
+		assertEquals(List.of("/{postId}/approve"), List.of(postMapping.value()));
+		assertEquals(AdminPostModerationActionResponse.class, approveMethod.getReturnType());
 	}
 
 	private static void assertControllerBoundary(Class<?> controllerType) {
@@ -79,5 +129,11 @@ class AdminApiStructureTests {
 					String name = component.getName().toLowerCase();
 					return name.contains("password") || name.contains("credential") || name.contains("hash");
 				}));
+	}
+
+	private static void assertNoEntityComponent(Class<?> recordType) {
+		assertFalse(Arrays.stream(recordType.getRecordComponents())
+				.map(component -> component.getType())
+				.anyMatch(type -> type == Post.class || type == PostModerationLog.class || type == User.class));
 	}
 }

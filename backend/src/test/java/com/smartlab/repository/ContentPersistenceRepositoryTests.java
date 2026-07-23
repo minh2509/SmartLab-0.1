@@ -2,6 +2,7 @@ package com.smartlab.repository;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.lang.reflect.Method;
@@ -15,6 +16,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 
 import com.smartlab.entity.File;
@@ -29,6 +31,8 @@ import com.smartlab.enums.PostContentType;
 import com.smartlab.enums.PostModerationAction;
 import com.smartlab.enums.PostStatus;
 import com.smartlab.enums.PostVisibility;
+
+import jakarta.persistence.LockModeType;
 
 class ContentPersistenceRepositoryTests {
 
@@ -80,6 +84,12 @@ class ContentPersistenceRepositoryTests {
 		assertReturnType(
 				PostRepository.class.getMethod("findPendingAdminPostsByIdIn", UUID.class, Collection.class),
 				List.class);
+		assertReturnType(
+				PostRepository.class.getMethod("findAdminPostDetail", UUID.class, UUID.class),
+				Optional.class);
+		assertReturnType(
+				PostRepository.class.getMethod("findAdminPostForApproval", UUID.class, UUID.class),
+				Optional.class);
 	}
 
 	@Test
@@ -191,6 +201,9 @@ class ContentPersistenceRepositoryTests {
 		assertReturnType(
 				PostModerationLogRepository.class.getMethod("findByPostAndAction", Post.class, PostModerationAction.class),
 				List.class);
+		assertReturnType(
+				PostModerationLogRepository.class.getMethod("findAdminPostModerationHistory", Post.class),
+				List.class);
 	}
 
 	@Test
@@ -199,6 +212,56 @@ class ContentPersistenceRepositoryTests {
 		assertReturnType(PostAttachmentRepository.class.getMethod("findByPost", Post.class), List.class);
 		assertReturnType(PostAttachmentRepository.class.getMethod("findByFile", File.class), List.class);
 		assertReturnType(PostAttachmentRepository.class.getMethod("findByUploadedBy", User.class), List.class);
+		assertReturnType(
+				PostAttachmentRepository.class.getMethod("findVisibleAdminPostAttachments", Post.class),
+				List.class);
+	}
+
+	@Test
+	void adminPostDetailQueriesAreLabScopedVisibleAndDeterministic() throws NoSuchMethodException {
+		Method detailMethod = PostRepository.class.getMethod("findAdminPostDetail", UUID.class, UUID.class);
+		Query detailQuery = detailMethod.getAnnotation(Query.class);
+		EntityGraph detailGraph = detailMethod.getAnnotation(EntityGraph.class);
+		assertTrue(detailQuery.value().contains("post.id = :postId"));
+		assertTrue(detailQuery.value().contains("post.lab.id = :labId"));
+		assertTrue(detailQuery.value().contains("post.deletedAt is null"));
+		assertEquals(
+				List.of("author", "project", "category", "coverFile"),
+				List.of(detailGraph.attributePaths()));
+
+		Method attachmentMethod = PostAttachmentRepository.class.getMethod(
+				"findVisibleAdminPostAttachments",
+				Post.class);
+		Query attachmentQuery = attachmentMethod.getAnnotation(Query.class);
+		EntityGraph attachmentGraph = attachmentMethod.getAnnotation(EntityGraph.class);
+		assertTrue(attachmentQuery.value().contains("attachment.post = :post"));
+		assertTrue(attachmentQuery.value().contains("attachment.file.deletedAt is null"));
+		assertTrue(attachmentQuery.value().contains("order by attachment.createdAt asc, attachment.id asc"));
+		assertEquals(List.of("file", "uploadedBy"), List.of(attachmentGraph.attributePaths()));
+
+		Method moderationMethod = PostModerationLogRepository.class.getMethod(
+				"findAdminPostModerationHistory",
+				Post.class);
+		Query moderationQuery = moderationMethod.getAnnotation(Query.class);
+		EntityGraph moderationGraph = moderationMethod.getAnnotation(EntityGraph.class);
+		assertTrue(moderationQuery.value().contains("log.post = :post"));
+		assertTrue(moderationQuery.value().contains("order by log.createdAt asc, log.id asc"));
+		assertEquals(List.of("actor"), List.of(moderationGraph.attributePaths()));
+	}
+
+	@Test
+	void adminPostApprovalLookupUsesRootOnlyPessimisticWriteLock() throws NoSuchMethodException {
+		Method approvalMethod = PostRepository.class.getMethod("findAdminPostForApproval", UUID.class, UUID.class);
+		Query approvalQuery = approvalMethod.getAnnotation(Query.class);
+		Lock lock = approvalMethod.getAnnotation(Lock.class);
+
+		assertEquals(LockModeType.PESSIMISTIC_WRITE, lock.value());
+		assertTrue(approvalQuery.value().contains("select post"));
+		assertTrue(approvalQuery.value().contains("from Post post"));
+		assertTrue(approvalQuery.value().contains("post.id = :postId"));
+		assertTrue(approvalQuery.value().contains("post.lab.id = :labId"));
+		assertTrue(approvalQuery.value().contains("post.deletedAt is null"));
+		assertNull(approvalMethod.getAnnotation(EntityGraph.class));
 	}
 
 	private static void assertJpaRepository(Class<?> repositoryType) {

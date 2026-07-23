@@ -178,6 +178,123 @@ SPRING_PROFILES_ACTIVE=nodb ./mvnw clean test
 - Flyway migrations
 - Changes to the ADM-055 response contract
 
+## ADM-057: Admin Post Detail API
+
+- Name: View complete post details for administrator moderation
+- Assignee: Minh
+- Status: `DONE`
+- Progress: 100%
+- Completion: Merged through PR #33 at commit `ceb258c7273297f2cb67687136e9c212d4ef8003`.
+- Branch: `feature/minh-admin-post-detail`
+- Endpoint: `GET /api/admin/posts/{postId}`
+- Dependencies: ADM-055, ADM-056
+- Test result: PASS — targeted 58 tests and full suite 215 tests; 0 failures, 0 errors, 0 skipped.
+- Runtime result: PASS — PostgreSQL API verification covered 401, 403, 200, 400, lab-scoped 404, soft-delete filtering, deterministic child ordering, sensitive-field exclusion, fixture cleanup, and port cleanup.
+- Scope: ADMIN/SUPER_ADMIN-only, lab-scoped, read-only post detail endpoint.
+- Notes: Missing, cross-lab, and soft-deleted posts must return the same HTTP 404 outcome.
+- Notes: Return full post content with safe author, project, category, cover-file, attachment, and moderation-history data.
+- Notes: Hide author email, authentication data, post review notes, storage paths, stored filenames, deleted files, and JPA entities.
+- Notes: Order attachments and moderation history by `createdAt ASC, id ASC`.
+- Notes: Do not change ADM-055 or ADM-056 behavior; do not add frontend or Flyway changes.
+
+### Acceptance Criteria
+
+- Authenticated ADMIN and SUPER_ADMIN receive HTTP 200 for a same-lab, non-deleted post.
+- Unauthenticated requests receive HTTP 401.
+- MEMBER and LEADER requests receive HTTP 403.
+- Missing, cross-lab, and soft-deleted posts receive HTTP 404.
+- The response includes full post content and safe nested metadata.
+- Optional project, category, and cover-file data may be null.
+- Soft-deleted cover files and attachment files are not exposed.
+- Attachments are ordered by `createdAt ASC, id ASC`.
+- Moderation history is ordered by `createdAt ASC, id ASC`.
+- No password, token, author email, review note, storage path, stored filename, or JPA entity is exposed.
+- Controller, service, mapper, repository, security, and PostgreSQL runtime behavior are verified.
+- Existing ADM-055 and ADM-056 contracts remain unchanged.
+
+### Out of Scope
+
+- Approve, reject, request-revision, publish, or delete operations
+- Post list and pending-queue changes
+- Frontend changes
+- File download or signed URL generation
+- Audit-log or notification writes
+- Flyway migrations
+
+## ADM-058: Admin Approve Post API
+
+- Name: Approve a pending post through the administrator moderation workflow
+- Assignee: Minh
+- Status: `DONE`
+- Progress: 100%
+- Branch: `feature/minh-admin-approve-post`
+- Endpoint: `POST /api/admin/posts/{postId}/approve`
+- Dependencies: ADM-057
+- Test result: PASS — 72 targeted tests and 229 full-suite tests passed with 0 failures, 0 errors, and 0 skipped.
+- Runtime result: PASS — PostgreSQL 18.4 verified HTTP 401/403/400/404/409/200 behavior, Lab isolation, soft-delete hiding, DB-backed role revalidation, exact approval mutation/log contract, one-success/one-conflict concurrent approval, atomic rollback, fixture cleanup, and port cleanup.
+- Notes: Code PR #35 was squash-merged into `main` at `5aef28b91628100deebab51b9e6764a1bcab9ff3`.
+- Scope: ADMIN/SUPER_ADMIN-only, Lab-scoped, transactional post approval command.
+- Notes: The endpoint has no request body and returns HTTP 200 with a focused moderation-action response.
+- Notes: Only the `PENDING_REVIEW` to `APPROVED` transition is valid.
+- Notes: Missing, cross-Lab, and soft-deleted posts must return the same generic HTTP 404 response.
+- Notes: Invalid source status must return HTTP 409 without modifying the post or creating a moderation log.
+- Notes: Use a root-only pessimistic write lock without nullable relationship entity graphs.
+- Notes: Set `reviewedBy`, set UTC `reviewedAt`, clear stale `reviewNote`, and create exactly one `APPROVE` moderation log.
+- Notes: The post update and moderation-log insert must commit or roll back atomically.
+- Notes: Do not add frontend, Flyway, audit-log, or notification changes.
+
+### Response Contract
+
+Return `AdminPostModerationActionResponse` containing:
+
+- `postId`
+- `action`
+- `fromStatus`
+- `toStatus`
+- `moderationStatus`
+- `reviewedById`
+- `reviewedByName`
+- `reviewedAt`
+
+The response must not expose passwords, tokens, email addresses, review notes, storage data, deletion metadata, or JPA entities.
+
+### Acceptance Criteria
+
+- Unauthenticated requests receive HTTP 401.
+- MEMBER and LEADER requests receive HTTP 403.
+- ADMIN and SUPER_ADMIN are permitted by the HTTP security boundary.
+- The service revalidates the actor's current database role through `AdminRolePolicy`.
+- A same-Lab, non-deleted `PENDING_REVIEW` post is approved successfully with HTTP 200.
+- A malformed post UUID receives HTTP 400.
+- Missing, cross-Lab, and soft-deleted posts receive the same HTTP 404 outcome.
+- DRAFT, NEEDS_REVISION, APPROVED, PUBLISHED, and REJECTED posts receive HTTP 409.
+- Successful approval changes the moderation status to `APPROVED`.
+- Successful approval records the authenticated actor in `reviewedBy`.
+- Successful approval records `reviewedAt` using the injected UTC `Clock`.
+- Successful approval clears any stale `reviewNote`.
+- Successful approval creates exactly one moderation log with action `APPROVE`.
+- The moderation log records `PENDING_REVIEW` as the source and `APPROVED` as the target.
+- The moderation log records the authenticated actor and a null reason.
+- Post mutation and moderation-log persistence occur in one transaction.
+- A root-only `PESSIMISTIC_WRITE` lookup prevents concurrent duplicate approvals.
+- Two concurrent approval requests result in one success, one conflict, and exactly one `APPROVE` log.
+- Existing ADM-055, ADM-056, and ADM-057 contracts remain unchanged.
+- Controller, service, mapper, repository, security, structure, and PostgreSQL runtime behavior are verified.
+
+### Out of Scope
+
+- Reject post
+- Request revision
+- Publish or unpublish post
+- Delete or restore post
+- Full post-detail response refetch
+- Frontend changes
+- File handling
+- Audit-log writes
+- Notification writes
+- Flyway migrations
+- Adding a version column or changing the database schema
+
 ## DB-001: Review PostgreSQL Source Schema
 
 - Name: Review PostgreSQL source schema

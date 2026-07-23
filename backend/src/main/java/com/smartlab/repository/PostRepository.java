@@ -9,6 +9,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -20,6 +21,8 @@ import com.smartlab.entity.User;
 import com.smartlab.enums.PostContentType;
 import com.smartlab.enums.PostStatus;
 import com.smartlab.enums.PostVisibility;
+
+import jakarta.persistence.LockModeType;
 
 public interface PostRepository extends JpaRepository<Post, UUID> {
 
@@ -125,4 +128,28 @@ public interface PostRepository extends JpaRepository<Post, UUID> {
 	List<Post> findPendingAdminPostsByIdIn(
 			@Param("labId") UUID labId,
 			@Param("ids") Collection<UUID> ids);
+
+	@EntityGraph(attributePaths = {"author", "project", "category", "coverFile"})
+	@Query("""
+			select post
+			from Post post
+			where post.id = :postId
+				and post.lab.id = :labId
+				and post.deletedAt is null
+			""")
+	Optional<Post> findAdminPostDetail(
+			@Param("labId") UUID labId,
+			@Param("postId") UUID postId);
+
+	@Lock(LockModeType.PESSIMISTIC_WRITE)
+	@Query("""
+			select post
+			from Post post
+			where post.id = :postId
+				and post.lab.id = :labId
+				and post.deletedAt is null
+			""")
+	Optional<Post> findAdminPostForApproval(
+			@Param("labId") UUID labId,
+			@Param("postId") UUID postId);
 }

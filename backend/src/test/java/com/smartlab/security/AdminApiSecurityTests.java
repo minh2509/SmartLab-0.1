@@ -285,6 +285,16 @@ class AdminApiSecurityTests {
 			return Map.of("ok", "admin-pending-posts");
 		}
 
+		@GetMapping("/api/admin/posts/{postId}")
+		Map<String, String> adminPostDetail() {
+			return Map.of("ok", "admin-post-detail");
+		}
+
+		@PostMapping("/api/admin/posts/{postId}/approve")
+		Map<String, String> approveAdminPost() {
+			return Map.of("ok", "admin-post-approve");
+		}
+
 		@PostMapping("/api/admin/probe")
 		Map<String, String> create(@Valid @RequestBody CreateAdminUserRequest request) {
 			return Map.of("ok", "created");

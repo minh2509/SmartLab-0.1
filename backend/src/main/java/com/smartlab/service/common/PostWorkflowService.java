@@ -4,9 +4,12 @@ import java.util.EnumMap;
 import java.util.Map;
 import java.util.Set;
 
+import org.springframework.stereotype.Service;
+
 import com.smartlab.enums.PostStatus;
 import com.smartlab.exception.InvalidPostTransitionException;
 
+@Service
 public class PostWorkflowService {
 
 	private static final Map<PostStatus, Set<PostStatus>> ALLOWED_TRANSITIONS = createAllowedTransitions();
