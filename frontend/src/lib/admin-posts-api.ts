@@ -162,6 +162,8 @@ export const adminPostVisibilityLabel: Record<AdminPostVisibility, string> = {
   PRIVATE: "Private",
 };
 
+export const ADMIN_POST_EMPTY_SUMMARY = "No summary provided by the backend.";
+
 export function moderationStatusLabel(status: AdminPostStatus) {
   return adminPostStatusLabel[status];
 }
@@ -172,6 +174,28 @@ export function contentTypeLabel(contentType: AdminPostContentType) {
 
 export function visibilityLabel(visibility: AdminPostVisibility) {
   return adminPostVisibilityLabel[visibility];
+}
+
+export function formatAdminPostDate(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Unscheduled";
+  return date.toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+}
+
+export function formatAdminPostDateTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Unscheduled";
+  return date.toLocaleString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 const statuses: readonly AdminPostStatus[] = [
@@ -632,7 +656,13 @@ export function usePendingAdminPosts(token: string | null, enabled: boolean, pag
   );
 }
 
-export function useAdminPostDetail(token: string | null, postId: string | null, enabled: boolean) {
+function useAdminPostDetailRequest(
+  token: string | null,
+  postId: string | null,
+  enabled: boolean,
+  fetchDetail: (token: string, postId: string) => Promise<AdminPostDetail>,
+  fallback: string,
+) {
   const [state, setState] = useState<RequestState<AdminPostDetail | null>>({
     data: null,
     loading: enabled,
@@ -648,7 +678,7 @@ export function useAdminPostDetail(token: string | null, postId: string | null, 
     }
     let current = true;
     setState((previous) => ({ ...previous, loading: true, error: null }));
-    void fetchAdminPostDetail(token, postId)
+    void fetchDetail(token, postId)
       .then((data) => {
         if (current) setState({ data, loading: false, error: null });
       })
@@ -657,15 +687,25 @@ export function useAdminPostDetail(token: string | null, postId: string | null, 
           setState({
             data: null,
             loading: false,
-            error: adminPostErrorMessage(error, "Post details could not be loaded."),
+            error: adminPostErrorMessage(error, fallback),
           });
       });
     return () => {
       current = false;
     };
-  }, [enabled, postId, revision, token]);
+  }, [enabled, fallback, fetchDetail, postId, revision, token]);
 
   return { ...state, retry };
+}
+
+export function useAdminPostDetail(token: string | null, postId: string | null, enabled: boolean) {
+  return useAdminPostDetailRequest(
+    token,
+    postId,
+    enabled,
+    fetchAdminPostDetail,
+    "Post details could not be loaded.",
+  );
 }
 
 export function useAdminLabAnnouncements(
@@ -689,37 +729,11 @@ export function useAdminLabAnnouncementDetail(
   postId: string | null,
   enabled: boolean,
 ) {
-  const [state, setState] = useState<RequestState<AdminPostDetail | null>>({
-    data: null,
-    loading: enabled,
-    error: null,
-  });
-  const [revision, setRevision] = useState(0);
-  const retry = useCallback(() => setRevision((value) => value + 1), []);
-
-  useEffect(() => {
-    if (!enabled || !token || !postId) {
-      setState({ data: null, loading: false, error: null });
-      return;
-    }
-    let current = true;
-    setState((previous) => ({ ...previous, loading: true, error: null }));
-    void fetchAdminLabAnnouncementDetail(token, postId)
-      .then((data) => {
-        if (current) setState({ data, loading: false, error: null });
-      })
-      .catch((error: unknown) => {
-        if (current)
-          setState({
-            data: null,
-            loading: false,
-            error: adminPostErrorMessage(error, "Lab announcement details could not be loaded."),
-          });
-      });
-    return () => {
-      current = false;
-    };
-  }, [enabled, postId, revision, token]);
-
-  return { ...state, retry };
+  return useAdminPostDetailRequest(
+    token,
+    postId,
+    enabled,
+    fetchAdminLabAnnouncementDetail,
+    "Lab announcement details could not be loaded.",
+  );
 }

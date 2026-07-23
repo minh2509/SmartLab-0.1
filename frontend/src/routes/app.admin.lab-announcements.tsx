@@ -3,7 +3,9 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { Megaphone, ShieldCheck } from "lucide-react";
 import { EmptyState, PageHeader, Panel, StatusPill } from "@/components/app/ui";
 import {
+  ADMIN_POST_EMPTY_SUMMARY,
   adminPostStatusTone,
+  formatAdminPostDateTime,
   moderationStatusLabel,
   type AdminPostPage,
   type AdminPostSummary,
@@ -20,7 +22,6 @@ export const Route = createFileRoute("/app/admin/lab-announcements")({
 });
 
 const PAGE_SIZE = 10;
-const emptySummary = "No summary provided by the backend.";
 
 function LabAnnouncementsPage() {
   const { user, activeRole, accessToken, ready } = useAuth();
@@ -151,14 +152,14 @@ function AnnouncementRow({ announcement }: { announcement: AdminPostSummary }) {
           </div>
           <h2 className="mt-2 text-base font-semibold text-ink">{announcement.title}</h2>
           <p className="mt-1 max-w-2xl text-sm leading-relaxed text-ink-soft">
-            {announcement.summary?.trim() || emptySummary}
+            {announcement.summary?.trim() || ADMIN_POST_EMPTY_SUMMARY}
           </p>
           <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-ink-soft">
             <span>{announcement.authorName?.trim() || "Unknown author"}</span>
-            <span>Created {formatDate(announcement.createdAt)}</span>
-            <span>Updated {formatDate(announcement.updatedAt)}</span>
+            <span>Created {formatAdminPostDateTime(announcement.createdAt)}</span>
+            <span>Updated {formatAdminPostDateTime(announcement.updatedAt)}</span>
             {announcement.publishedAt ? (
-              <span>Published {formatDate(announcement.publishedAt)}</span>
+              <span>Published {formatAdminPostDateTime(announcement.publishedAt)}</span>
             ) : null}
           </div>
         </div>
@@ -208,16 +209,4 @@ function PaginationControls({
 function formatPagePosition(page: AdminPostPage) {
   if (page.totalPages === 0) return "page 0 of 0";
   return `page ${page.page + 1} of ${page.totalPages}`;
-}
-
-function formatDate(iso: string) {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "Unscheduled";
-  return date.toLocaleString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
 }

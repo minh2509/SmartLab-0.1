@@ -3,8 +3,10 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { ShieldCheck } from "lucide-react";
 import { EmptyState, PageHeader, Panel, StatusPill } from "@/components/app/ui";
 import {
+  ADMIN_POST_EMPTY_SUMMARY,
   adminPostStatusTone,
   contentTypeLabel,
+  formatAdminPostDate,
   moderationStatusLabel,
   type AdminPostPage,
   type AdminPostSummary,
@@ -22,7 +24,6 @@ export const Route = createFileRoute("/app/moderation/posts")({
 });
 
 const PAGE_SIZE = 10;
-const emptySummary = "No summary provided by the backend.";
 
 function PostModerationPage() {
   const { user, activeRole, accessToken } = useAuth();
@@ -171,11 +172,11 @@ function PostRows({ posts }: { posts: AdminPostSummary[] }) {
               </div>
               <h2 className="mt-2 text-base font-semibold text-ink">{post.title}</h2>
               <p className="mt-1 max-w-2xl text-sm leading-relaxed text-ink-soft">
-                {post.summary?.trim() || emptySummary}
+                {post.summary?.trim() || ADMIN_POST_EMPTY_SUMMARY}
               </p>
               <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-ink-soft">
                 <span>{post.authorName}</span>
-                <span>Updated {formatDate(post.updatedAt)}</span>
+                <span>Updated {formatAdminPostDate(post.updatedAt)}</span>
                 {post.projectName ? <span>{post.projectName}</span> : null}
                 {post.categoryName ? <span>{post.categoryName}</span> : null}
               </div>
@@ -237,14 +238,4 @@ function MetadataRow({ label, value }: { label: string; value: string | number }
 function formatPagePosition(page: AdminPostPage) {
   if (page.totalPages === 0) return "0 of 0";
   return `${page.page + 1} of ${page.totalPages}`;
-}
-
-function formatDate(iso: string) {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "Unscheduled";
-  return date.toLocaleDateString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
 }

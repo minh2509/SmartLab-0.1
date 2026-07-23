@@ -2,8 +2,10 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { ShieldCheck } from "lucide-react";
 import { EmptyState, PageHeader, Panel, StatusPill } from "@/components/app/ui";
 import {
+  ADMIN_POST_EMPTY_SUMMARY,
   adminPostStatusTone,
   contentTypeLabel,
+  formatAdminPostDateTime,
   moderationStatusLabel,
   type AdminPostAttachment,
   type AdminPostDetail,
@@ -24,7 +26,6 @@ export const Route = createFileRoute("/app/admin/lab-announcements_/$postId")({
   component: LabAnnouncementDetailPage,
 });
 
-const emptySummary = "No summary provided by the backend.";
 const emptyContent = "No full content provided by the backend.";
 
 function LabAnnouncementDetailPage() {
@@ -114,7 +115,7 @@ function LabAnnouncementDetailContent({ detail }: { detail: AdminPostDetail }) {
       <PageHeader
         eyebrow="Admin content"
         title={detail.title}
-        description={detail.summary?.trim() || emptySummary}
+        description={detail.summary?.trim() || ADMIN_POST_EMPTY_SUMMARY}
         action={
           <StatusPill tone={adminPostStatusTone(detail.moderationStatus)}>
             {moderationStatusLabel(detail.moderationStatus)}
@@ -137,7 +138,7 @@ function LabAnnouncementDetailContent({ detail }: { detail: AdminPostDetail }) {
               </div>
               <h2 className="mt-4 font-display text-3xl leading-tight text-ink">{detail.title}</h2>
               <p className="mt-3 text-base leading-relaxed text-ink-soft">
-                {detail.summary?.trim() || emptySummary}
+                {detail.summary?.trim() || ADMIN_POST_EMPTY_SUMMARY}
               </p>
               <div className="mt-8 space-y-5">
                 {contentParagraphs(detail.content).map((paragraph) => (
@@ -201,11 +202,13 @@ function LabAnnouncementDetailContent({ detail }: { detail: AdminPostDetail }) {
               <Meta label="Status" value={moderationStatusLabel(detail.moderationStatus)} />
               {detail.project ? <Meta label="Project" value={detail.project.name} /> : null}
               {detail.category ? <Meta label="Category" value={detail.category.name} /> : null}
-              <Meta label="Created" value={formatDate(detail.createdAt)} />
-              <Meta label="Updated" value={formatDate(detail.updatedAt)} />
+              <Meta label="Created" value={formatAdminPostDateTime(detail.createdAt)} />
+              <Meta label="Updated" value={formatAdminPostDateTime(detail.updatedAt)} />
               <Meta
                 label="Published"
-                value={detail.publishedAt ? formatDate(detail.publishedAt) : "Not published"}
+                value={
+                  detail.publishedAt ? formatAdminPostDateTime(detail.publishedAt) : "Not published"
+                }
               />
             </dl>
           </Panel>
@@ -231,7 +234,7 @@ function AttachmentRow({ attachment }: { attachment: AdminPostAttachment }) {
         <span>{attachment.mimeType ?? "Unknown MIME type"}</span>
         <span>{formatFileSize(attachment.fileSize)}</span>
         <span>{attachment.uploadedByName ?? "Unknown uploader"}</span>
-        <span>{formatDate(attachment.createdAt)}</span>
+        <span>{formatAdminPostDateTime(attachment.createdAt)}</span>
       </div>
     </article>
   );
@@ -245,7 +248,7 @@ function HistoryRow({ entry }: { entry: AdminPostModerationHistory }) {
         <span className="text-xs text-ink-soft">{formatTransition(entry)}</span>
       </div>
       <div className="mt-2 text-xs text-ink-soft">
-        {entry.actorName ?? "Unknown actor"} · {formatDate(entry.createdAt)}
+        {entry.actorName ?? "Unknown actor"} · {formatAdminPostDateTime(entry.createdAt)}
       </div>
       {entry.reason?.trim() ? (
         <p className="mt-2 text-sm leading-relaxed text-ink">{entry.reason}</p>
@@ -261,7 +264,7 @@ function FileMetadata({ file }: { file: AdminPostFile }) {
       <Meta label="MIME type" value={file.mimeType} />
       <Meta label="Size" value={formatFileSize(file.fileSize)} />
       <Meta label="Extension" value={file.fileExtension} />
-      <Meta label="Created" value={formatDate(file.createdAt)} />
+      <Meta label="Created" value={formatAdminPostDateTime(file.createdAt)} />
     </dl>
   );
 }
@@ -315,18 +318,6 @@ function moderationActionLabel(action: AdminPostModerationHistory["action"]) {
     .split("_")
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
-}
-
-function formatDate(iso: string) {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "Unscheduled";
-  return date.toLocaleString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
 }
 
 function formatFileSize(size: number | null) {
