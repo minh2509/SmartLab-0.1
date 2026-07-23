@@ -2,6 +2,7 @@ package com.smartlab.service.admin;
 
 import java.time.Clock;
 import java.time.OffsetDateTime;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -34,6 +35,7 @@ import com.smartlab.mapper.AdminPostApiMapper;
 import com.smartlab.repository.PostAttachmentRepository;
 import com.smartlab.repository.PostModerationLogRepository;
 import com.smartlab.repository.PostRepository;
+import com.smartlab.service.common.AuditLogService;
 import com.smartlab.service.common.PostWorkflowService;
 
 @Service
@@ -50,6 +52,7 @@ public class AdminPostService {
 	private final AdminRolePolicy rolePolicy;
 	private final PostWorkflowService workflowService;
 	private final AdminPostApiMapper mapper;
+	private final AuditLogService auditLogService;
 	private final Clock clock;
 
 	public AdminPostService(
@@ -59,6 +62,7 @@ public class AdminPostService {
 			AdminRolePolicy rolePolicy,
 			PostWorkflowService workflowService,
 			AdminPostApiMapper mapper,
+			AuditLogService auditLogService,
 			Clock clock) {
 		this.postRepository = postRepository;
 		this.postAttachmentRepository = postAttachmentRepository;
@@ -66,6 +70,7 @@ public class AdminPostService {
 		this.rolePolicy = rolePolicy;
 		this.workflowService = workflowService;
 		this.mapper = mapper;
+		this.auditLogService = auditLogService;
 		this.clock = clock;
 	}
 
@@ -184,6 +189,47 @@ public class AdminPostService {
 	}
 
 	@Transactional
+	public AdminPostDetailResponse updateLabAnnouncement(UpdateAdminLabAnnouncementCommand command) {
+		if (command == null) {
+			throw new InvalidAdminServiceInputException("Update admin lab announcement command must not be null.");
+		}
+		AdminRolePolicy.ActorContext actor = rolePolicy.requireAdminActor(command.actorUserId());
+		if (command.postId() == null) {
+			throw new InvalidAdminServiceInputException("Post ID must not be null.");
+		}
+		String title = requireTrimmed(command.title(), "Title", 255);
+		String content = requireTrimmed(command.content(), "Content", null);
+		String summary = normalizedOptional(command.summary());
+		PostVisibility visibility = requireLabAnnouncementVisibility(command.visibility());
+		Post post = postRepository.findAdminPostDetail(actor.lab().getId(), command.postId())
+				.orElseThrow(() -> new ResourceNotFoundException("Post was not found."));
+		if (post.getContentType() != PostContentType.LAB_ANNOUNCEMENT) {
+			throw new ResourceNotFoundException("Post was not found.");
+		}
+		Map<String, Object> oldValue = labAnnouncementAuditValue(post);
+
+		post.setTitle(title);
+		post.setSummary(summary);
+		post.setContent(content);
+		post.setVisibility(visibility);
+
+		Post savedPost = postRepository.saveAndFlush(post);
+		Map<String, Object> newValue = labAnnouncementAuditValue(savedPost);
+		auditLogService.record(new AuditLogService.AuditCommand(
+				actor.actor().getId(),
+				"UPDATE_LAB_ANNOUNCEMENT",
+				"LAB_ANNOUNCEMENT",
+				savedPost.getId(),
+				oldValue,
+				newValue));
+
+		return mapper.toDetailResponse(
+				savedPost,
+				postAttachmentRepository.findVisibleAdminPostAttachments(savedPost),
+				postModerationLogRepository.findAdminPostModerationHistory(savedPost));
+	}
+
+	@Transactional
 	public AdminPostModerationActionResponse approvePost(ApproveAdminPostCommand command) {
 		if (command == null) {
 			throw new InvalidAdminServiceInputException("Approve admin post command must not be null.");
@@ -264,6 +310,47 @@ public class AdminPostService {
 		return "%" + escapedKeyword + "%";
 	}
 
+	private static String requireTrimmed(String value, String fieldName, Integer maximumLength) {
+		if (value == null || value.trim().isBlank()) {
+			throw new InvalidAdminServiceInputException(fieldName + " must not be blank.");
+		}
+		String trimmed = value.trim();
+		if (maximumLength != null && trimmed.length() > maximumLength) {
+			throw new InvalidAdminServiceInputException(fieldName + " must not exceed " + maximumLength + " characters.");
+		}
+		return trimmed;
+	}
+
+	private static String normalizedOptional(String value) {
+		if (value == null) {
+			return null;
+		}
+		String trimmed = value.trim();
+		return trimmed.isBlank() ? null : trimmed;
+	}
+
+	private static PostVisibility requireLabAnnouncementVisibility(PostVisibility visibility) {
+		if (visibility == null) {
+			throw new InvalidAdminServiceInputException("Visibility must not be null.");
+		}
+		if (visibility == PostVisibility.PROJECT_INTERNAL) {
+			throw new InvalidAdminServiceInputException("Lab announcements cannot use project-internal visibility.");
+		}
+		return visibility;
+	}
+
+	private static Map<String, Object> labAnnouncementAuditValue(Post post) {
+		Map<String, Object> value = new LinkedHashMap<>();
+		value.put("title", post.getTitle());
+		value.put("slug", post.getSlug());
+		value.put("visibility", post.getVisibility());
+		value.put("moderationStatus", post.getModerationStatus());
+		value.put("publishedAt", post.getPublishedAt());
+		value.put("summaryLength", post.getSummary() == null ? 0 : post.getSummary().length());
+		value.put("contentLength", post.getContent() == null ? 0 : post.getContent().length());
+		return value;
+	}
+
 	private AdminPostPageResponse listPostsForActor(
 			Lab lab,
 			String keywordPattern,
@@ -317,6 +404,15 @@ public class AdminPostService {
 	public record GetAdminLabAnnouncementDetailQuery(
 			UUID actorUserId,
 			UUID postId) {
+	}
+
+	public record UpdateAdminLabAnnouncementCommand(
+			UUID actorUserId,
+			UUID postId,
+			String title,
+			String summary,
+			String content,
+			PostVisibility visibility) {
 	}
 
 	public record ApproveAdminPostCommand(

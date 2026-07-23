@@ -6,15 +6,19 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.smartlab.dto.request.admin.UpdateAdminLabAnnouncementRequest;
 import com.smartlab.dto.response.admin.AdminPostDetailResponse;
 import com.smartlab.dto.response.admin.AdminPostPageResponse;
 import com.smartlab.security.AuthenticatedActorResolver;
 import com.smartlab.service.admin.AdminPostService;
 
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 
@@ -47,5 +51,18 @@ public class AdminLabAnnouncementController {
 		return adminPostService.getLabAnnouncementDetail(new AdminPostService.GetAdminLabAnnouncementDetailQuery(
 				actorResolver.requireActorUserId(),
 				postId));
+	}
+
+	@PutMapping("/{postId}")
+	public AdminPostDetailResponse updateLabAnnouncement(
+			@PathVariable UUID postId,
+			@Valid @RequestBody UpdateAdminLabAnnouncementRequest request) {
+		return adminPostService.updateLabAnnouncement(new AdminPostService.UpdateAdminLabAnnouncementCommand(
+				actorResolver.requireActorUserId(),
+				postId,
+				request.title(),
+				request.summary(),
+				request.content(),
+				request.visibility()));
 	}
 }
