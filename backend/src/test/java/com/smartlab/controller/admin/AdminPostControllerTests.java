@@ -44,7 +44,9 @@ class AdminPostControllerTests {
 	private final AdminPostService adminPostService = mock(AdminPostService.class);
 	private final AuthenticatedActorResolver actorResolver = mock(AuthenticatedActorResolver.class);
 	private final MockMvc mockMvc = MockMvcBuilders
-			.standaloneSetup(new AdminPostController(adminPostService, actorResolver))
+			.standaloneSetup(
+					new AdminPostController(adminPostService, actorResolver),
+					new AdminLabAnnouncementController(adminPostService, actorResolver))
 			.setControllerAdvice(new ApiExceptionHandler())
 			.setValidator(validator())
 			.build();
@@ -249,6 +251,94 @@ class AdminPostControllerTests {
 	}
 
 	@Test
+	void listLabAnnouncementsReturnsPaginationContractAndOmitsSensitiveFields() throws Exception {
+		UUID actorUserId = UUID.randomUUID();
+		UUID postId = UUID.randomUUID();
+		when(actorResolver.requireActorUserId()).thenReturn(actorUserId);
+		when(adminPostService.listLabAnnouncements(any(AdminPostService.ListLabAnnouncementsQuery.class)))
+				.thenReturn(new AdminPostPageResponse(
+						List.of(summary(postId, PostContentType.LAB_ANNOUNCEMENT)),
+						0,
+						20,
+						1,
+						1,
+						true,
+						true));
+
+		mockMvc.perform(get("/api/admin/lab-announcements"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.content[0].id").value(postId.toString()))
+				.andExpect(jsonPath("$.content[0].contentType").value("LAB_ANNOUNCEMENT"))
+				.andExpect(jsonPath("$.content[0].content").doesNotExist())
+				.andExpect(jsonPath("$.content[0].authorEmail").doesNotExist())
+				.andExpect(jsonPath("$.content[0].reviewNote").doesNotExist())
+				.andExpect(jsonPath("$.page").value(0))
+				.andExpect(jsonPath("$.size").value(20))
+				.andExpect(jsonPath("$.totalElements").value(1))
+				.andExpect(jsonPath("$.totalPages").value(1))
+				.andExpect(jsonPath("$.first").value(true))
+				.andExpect(jsonPath("$.last").value(true))
+				.andExpect(content().string(not(containsString("Full private content"))))
+				.andExpect(content().string(not(containsString("author@example.edu"))));
+
+		ArgumentCaptor<AdminPostService.ListLabAnnouncementsQuery> captor =
+				ArgumentCaptor.forClass(AdminPostService.ListLabAnnouncementsQuery.class);
+		verify(adminPostService).listLabAnnouncements(captor.capture());
+		assertEquals(actorUserId, captor.getValue().actorUserId());
+		assertEquals(null, captor.getValue().page());
+		assertEquals(null, captor.getValue().size());
+	}
+
+	@Test
+	void listLabAnnouncementsSupportsExplicitPaginationAndEmptyPage() throws Exception {
+		UUID actorUserId = UUID.randomUUID();
+		when(actorResolver.requireActorUserId()).thenReturn(actorUserId);
+		when(adminPostService.listLabAnnouncements(any(AdminPostService.ListLabAnnouncementsQuery.class)))
+				.thenReturn(new AdminPostPageResponse(List.of(), 2, 50, 0, 0, false, true));
+
+		mockMvc.perform(get("/api/admin/lab-announcements")
+						.param("page", "2")
+						.param("size", "50"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.content").isArray())
+				.andExpect(jsonPath("$.content").isEmpty())
+				.andExpect(jsonPath("$.page").value(2))
+				.andExpect(jsonPath("$.size").value(50))
+				.andExpect(jsonPath("$.totalElements").value(0));
+
+		ArgumentCaptor<AdminPostService.ListLabAnnouncementsQuery> captor =
+				ArgumentCaptor.forClass(AdminPostService.ListLabAnnouncementsQuery.class);
+		verify(adminPostService).listLabAnnouncements(captor.capture());
+		assertEquals(actorUserId, captor.getValue().actorUserId());
+		assertEquals(2, captor.getValue().page());
+		assertEquals(50, captor.getValue().size());
+	}
+
+	@Test
+	void invalidLabAnnouncementPageAndSizeReturnBadRequestThroughExistingExceptionHandler() throws Exception {
+		when(actorResolver.requireActorUserId()).thenReturn(UUID.randomUUID());
+		when(adminPostService.listLabAnnouncements(any(AdminPostService.ListLabAnnouncementsQuery.class)))
+				.thenThrow(new InvalidAdminServiceInputException("Page or size is invalid."));
+
+		mockMvc.perform(get("/api/admin/lab-announcements").param("page", "-1"))
+				.andExpect(status().isBadRequest());
+		mockMvc.perform(get("/api/admin/lab-announcements").param("size", "0"))
+				.andExpect(status().isBadRequest());
+		mockMvc.perform(get("/api/admin/lab-announcements").param("size", "101"))
+				.andExpect(status().isBadRequest());
+	}
+
+	@Test
+	void labAnnouncementRequestWithoutAuthenticatedActorIsUnauthorized() throws Exception {
+		when(actorResolver.requireActorUserId())
+				.thenThrow(new AuthenticationCredentialsNotFoundException("Authentication is required."));
+
+		mockMvc.perform(get("/api/admin/lab-announcements"))
+				.andExpect(status().isUnauthorized())
+				.andExpect(jsonPath("$.status").value(401));
+	}
+
+	@Test
 	void getPostDetailReturnsFullDetailContractAndOmitsSensitiveFields() throws Exception {
 		UUID actorUserId = UUID.randomUUID();
 		UUID postId = UUID.randomUUID();
@@ -397,12 +487,16 @@ class AdminPostControllerTests {
 	}
 
 	private static AdminPostSummaryResponse summary(UUID postId) {
+		return summary(postId, PostContentType.NEWS);
+	}
+
+	private static AdminPostSummaryResponse summary(UUID postId, PostContentType contentType) {
 		return new AdminPostSummaryResponse(
 				postId,
 				"Post Title",
 				"post-title",
 				"Short summary",
-				PostContentType.NEWS,
+				contentType,
 				PostVisibility.PUBLIC,
 				PostStatus.PUBLISHED,
 				UUID.randomUUID(),

@@ -142,6 +142,30 @@ class AdminApiSecurityTests {
 	}
 
 	@Test
+	void adminLabAnnouncementListUsesExistingAdminAuthorizationRules() throws Exception {
+		mockMvc.perform(get("/api/admin/lab-announcements"))
+				.andExpect(status().isUnauthorized());
+		mockMvc.perform(get("/api/admin/lab-announcements")
+						.header("Authorization", "Bearer " + loginToken("leader@example.edu")))
+				.andExpect(status().isForbidden());
+		mockMvc.perform(get("/api/admin/lab-announcements")
+						.header("Authorization", "Bearer " + loginToken("member@example.edu")))
+				.andExpect(status().isForbidden());
+		mockMvc.perform(get("/api/admin/lab-announcements")
+						.header("Authorization", "Bearer " + loginToken("noroles@example.edu")))
+				.andExpect(status().isForbidden());
+		mockMvc.perform(get("/api/admin/lab-announcements")
+						.header("Authorization", "Bearer " + loginToken("admin@example.edu")))
+				.andExpect(status().isOk());
+		mockMvc.perform(get("/api/admin/lab-announcements")
+						.header("Authorization", "Bearer " + loginToken("admin-role-only@example.edu")))
+				.andExpect(status().isOk());
+		mockMvc.perform(get("/api/admin/lab-announcements")
+						.header("Authorization", "Bearer " + loginToken("super@example.edu")))
+				.andExpect(status().isOk());
+	}
+
+	@Test
 	void usersWithoutAcceptedAdminAuthoritiesReceiveJsonForbidden() throws Exception {
 		for (String username : List.of(
 				"leader@example.edu",
@@ -294,6 +318,11 @@ class AdminApiSecurityTests {
 		@GetMapping("/api/admin/posts/pending")
 		Map<String, String> pendingAdminPosts() {
 			return Map.of("ok", "admin-pending-posts");
+		}
+
+		@GetMapping("/api/admin/lab-announcements")
+		Map<String, String> adminLabAnnouncements() {
+			return Map.of("ok", "admin-lab-announcements");
 		}
 
 		@GetMapping("/api/admin/posts/{postId}")
