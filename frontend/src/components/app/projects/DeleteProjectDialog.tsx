@@ -7,11 +7,15 @@ export function DeleteProjectDialog({
   open,
   onClose,
   onConfirm,
+  pending = false,
+  error,
 }: {
   project: Project | null;
   open: boolean;
   onClose: () => void;
   onConfirm: () => void;
+  pending?: boolean;
+  error?: string | null;
 }) {
   const [typed, setTyped] = useState("");
   useEffect(() => setTyped(""), [open]);
@@ -34,9 +38,8 @@ export function DeleteProjectDialog({
           <div>
             <h2 className="text-sm font-semibold text-ink">Delete project</h2>
             <p className="mt-1 text-xs text-ink-soft">
-              This will permanently remove{" "}
-              <span className="font-medium text-ink">{project.name}</span> and all its metadata from
-              the workspace. This action cannot be undone.
+              This will remove <span className="font-medium text-ink">{project.name}</span> and all
+              its metadata from the active project catalogue. Existing database history is retained.
             </p>
           </div>
         </div>
@@ -55,19 +58,26 @@ export function DeleteProjectDialog({
           />
         </div>
 
+        {error ? (
+          <div className="mt-4 rounded-md border border-[color:var(--destructive)]/40 bg-[color-mix(in_oklab,var(--destructive)_10%,transparent)] px-3 py-2 text-xs text-[color:var(--destructive)]">
+            {error}
+          </div>
+        ) : null}
+
         <div className="mt-5 flex items-center justify-end gap-2">
           <button
             onClick={onClose}
+            disabled={pending}
             className="rounded-md border border-hairline px-3 py-1.5 text-sm text-ink hover:bg-muted"
           >
             Cancel
           </button>
           <button
-            disabled={!match}
+            disabled={!match || pending}
             onClick={onConfirm}
             className="rounded-md bg-[color:var(--destructive)] px-3.5 py-1.5 text-sm font-medium text-white transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
           >
-            Delete project
+            {pending ? "Deleting..." : "Delete project"}
           </button>
         </div>
       </div>

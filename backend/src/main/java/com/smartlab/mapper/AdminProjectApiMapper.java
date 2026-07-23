@@ -8,6 +8,7 @@ import java.util.Set;
 import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Component;
 
+import com.smartlab.dto.request.admin.SaveAdminProjectRequest;
 import com.smartlab.dto.response.admin.AdminProjectResponse;
 import com.smartlab.dto.response.admin.PageResponse;
 import com.smartlab.enums.ProjectStatus;
@@ -31,6 +32,37 @@ public class AdminProjectApiMapper {
 				toTypes(type),
 				toVisibilities(visibility),
 				toResearchFieldCode(field));
+	}
+
+	public AdminProjectService.ProjectCommand toCommand(SaveAdminProjectRequest request) {
+		if (request == null) {
+			throw new InvalidAdminServiceInputException("Project request must not be null.");
+		}
+		return new AdminProjectService.ProjectCommand(
+				request.code(),
+				request.name(),
+				request.description(),
+				request.objective(),
+				toProjectType(request.type()),
+				request.fields(),
+				request.leaderIds(),
+				request.startDate(),
+				request.expectedEnd(),
+				toCreateOrUpdateStatus(request.status()),
+				request.progress(),
+				toProjectVisibility(request.visibility()));
+	}
+
+	public ProjectStatus toTargetStatus(String value) {
+		return switch (normalizeRequired(value, "Project status")) {
+			case "proposed" -> ProjectStatus.PROPOSED;
+			case "planning", "preparing" -> ProjectStatus.PREPARING;
+			case "active", "in progress" -> ProjectStatus.IN_PROGRESS;
+			case "on hold", "paused" -> ProjectStatus.PAUSED;
+			case "publishing" -> ProjectStatus.COMPLETED;
+			case "completed", "closed" -> ProjectStatus.CLOSED;
+			default -> throw new InvalidAdminServiceInputException("Unsupported project status.");
+		};
 	}
 
 	public PageResponse<AdminProjectResponse> toPageResponse(Page<AdminProjectService.ProjectSummary> page) {
@@ -148,5 +180,42 @@ public class AdminProjectApiMapper {
 				.replace('_', ' ')
 				.replace('-', ' ')
 				.replaceAll("\\s+", " ");
+	}
+
+	private static ProjectStatus toCreateOrUpdateStatus(String value) {
+		return switch (normalizeRequired(value, "Project status")) {
+			case "planning", "proposed" -> ProjectStatus.PROPOSED;
+			case "preparing" -> ProjectStatus.PREPARING;
+			case "active", "in progress" -> ProjectStatus.IN_PROGRESS;
+			case "on hold", "paused" -> ProjectStatus.PAUSED;
+			case "publishing" -> ProjectStatus.COMPLETED;
+			case "completed", "closed" -> ProjectStatus.CLOSED;
+			default -> throw new InvalidAdminServiceInputException("Unsupported project status.");
+		};
+	}
+
+	private static ProjectType toProjectType(String value) {
+		return switch (normalizeRequired(value, "Project type")) {
+			case "research" -> ProjectType.RESEARCH;
+			case "production" -> ProjectType.PRODUCTION;
+			default -> throw new InvalidAdminServiceInputException("Unsupported project type.");
+		};
+	}
+
+	private static ProjectVisibility toProjectVisibility(String value) {
+		return switch (normalizeRequired(value, "Project visibility")) {
+			case "public" -> ProjectVisibility.PUBLIC;
+			case "internal", "lab internal" -> ProjectVisibility.LAB_INTERNAL;
+			case "project internal" -> ProjectVisibility.PROJECT_INTERNAL;
+			case "private" -> ProjectVisibility.PRIVATE;
+			default -> throw new InvalidAdminServiceInputException("Unsupported project visibility.");
+		};
+	}
+
+	private static String normalizeRequired(String value, String fieldName) {
+		if (value == null || value.isBlank()) {
+			throw new InvalidAdminServiceInputException(fieldName + " must not be blank.");
+		}
+		return normalize(value);
 	}
 }

@@ -27,6 +27,10 @@ public interface ProjectRepository extends JpaRepository<Project, UUID> {
 
 	boolean existsByLabAndSlug(Lab lab, String slug);
 
+	boolean existsByLabAndCodeAndIdNot(Lab lab, String code, UUID id);
+
+	boolean existsByLabAndSlugAndIdNot(Lab lab, String slug, UUID id);
+
 	List<Project> findByLabAndStatus(Lab lab, ProjectStatus status);
 
 	Optional<Project> findByIdAndLabAndDeletedAtIsNull(UUID id, Lab lab);
