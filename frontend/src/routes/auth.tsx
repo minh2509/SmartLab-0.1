@@ -1,5 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
+import { ApiError } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 
@@ -23,7 +25,6 @@ function AuthPage() {
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
   useEffect(() => {
@@ -38,7 +39,6 @@ function AuthPage() {
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    setError(null);
     setPending(true);
 
     try {
@@ -49,7 +49,10 @@ function AuthPage() {
         replace: true,
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Sign-in failed.");
+      toast.error(signInErrorTitle(err), {
+        id: "sign-in-error",
+        description: signInErrorDescription(err),
+      });
     } finally {
       setPending(false);
     }
@@ -113,7 +116,6 @@ function AuthPage() {
                   value={email}
                   onChange={(event) => {
                     setEmail(event.target.value);
-                    setError(null);
                   }}
                   placeholder="you@smart.lab"
                   className="rounded-md border border-hairline bg-surface-elev px-3 py-2 text-sm text-ink outline-none transition-colors focus:border-ink/40"
@@ -129,21 +131,11 @@ function AuthPage() {
                   value={password}
                   onChange={(event) => {
                     setPassword(event.target.value);
-                    setError(null);
                   }}
                   placeholder="••••••••"
                   className="rounded-md border border-hairline bg-surface-elev px-3 py-2 text-sm text-ink outline-none transition-colors focus:border-ink/40"
                 />
               </label>
-
-              {error ? (
-                <div
-                  role="alert"
-                  className="rounded-md border border-[color:var(--destructive)]/30 bg-[color:var(--destructive)]/8 px-3 py-2 text-xs text-[color:var(--destructive)]"
-                >
-                  {error}
-                </div>
-              ) : null}
 
               <button
                 type="submit"
@@ -172,4 +164,24 @@ function AuthPage() {
       </div>
     </div>
   );
+}
+
+function signInErrorTitle(error: unknown) {
+  if (error instanceof ApiError && error.status === 401) {
+    return "Invalid email or password.";
+  }
+  if (error instanceof ApiError && error.status === 0) {
+    return "Unable to connect to the backend.";
+  }
+  return "Unable to sign in.";
+}
+
+function signInErrorDescription(error: unknown) {
+  if (error instanceof ApiError && error.status === 401) {
+    return "Check your email and password, then try again.";
+  }
+  if (error instanceof ApiError && error.status === 0) {
+    return "Make sure the SmartLab backend is running on port 8080.";
+  }
+  return error instanceof Error ? error.message : "Please try again later.";
 }

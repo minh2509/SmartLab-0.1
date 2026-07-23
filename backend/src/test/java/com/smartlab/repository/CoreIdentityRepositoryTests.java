@@ -57,6 +57,12 @@ class CoreIdentityRepositoryTests {
 						Role.class,
 						Permission.class),
 				boolean.class);
+		assertReturnType(
+				RolePermissionRepository.class.getMethod("findByRole", Role.class),
+				java.util.List.class);
+		assertReturnType(
+				RolePermissionRepository.class.getMethod("findByRoleIn", Collection.class),
+				java.util.List.class);
 	}
 
 	private static void assertJpaRepository(Class<?> repositoryType) {

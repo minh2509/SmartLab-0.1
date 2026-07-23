@@ -1,6 +1,7 @@
 package com.smartlab.config;
 
 import java.time.Clock;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Set;
@@ -29,6 +30,7 @@ import org.springframework.security.oauth2.server.resource.authentication.JwtAut
 
 import com.nimbusds.jose.jwk.source.ImmutableSecret;
 import com.smartlab.enums.UserAccountStatus;
+import com.smartlab.security.SecurityAuthorities;
 import com.smartlab.security.SmartLabJwtProperties;
 
 @Configuration
@@ -118,17 +120,29 @@ public class JwtSecurityConfig {
 
 		@Override
 		public Collection<GrantedAuthority> convert(Jwt jwt) {
+			List<GrantedAuthority> authorities = new ArrayList<>();
 			List<String> roles = jwt.getClaimAsStringList("roles");
-			if (roles == null) {
-				return List.of();
+			if (roles != null) {
+				roles.stream()
+						.filter(SUPPORTED_ROLE_CODES::contains)
+						.distinct()
+						.sorted()
+						.map(role -> new SimpleGrantedAuthority(ROLE_PREFIX + role))
+						.map(GrantedAuthority.class::cast)
+						.forEach(authorities::add);
 			}
-			return roles.stream()
-					.filter(SUPPORTED_ROLE_CODES::contains)
-					.distinct()
-					.sorted()
-					.map(role -> new SimpleGrantedAuthority(ROLE_PREFIX + role))
-					.map(GrantedAuthority.class::cast)
-					.toList();
+			List<String> permissions = jwt.getClaimAsStringList("permissions");
+			if (permissions != null) {
+				permissions.stream()
+						.filter(permission -> !permission.isBlank())
+						.distinct()
+						.sorted()
+						.map(SecurityAuthorities::permission)
+						.map(SimpleGrantedAuthority::new)
+						.map(GrantedAuthority.class::cast)
+						.forEach(authorities::add);
+			}
+			return authorities;
 		}
 	}
 }

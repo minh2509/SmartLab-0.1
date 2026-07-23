@@ -1,5 +1,6 @@
 package com.smartlab.dto.response.admin;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -13,5 +14,6 @@ public record AdminUserResponse(
 		String fullName,
 		UUID avatarFileId,
 		UserAccountStatus accountStatus,
+		OffsetDateTime lastLoginAt,
 		List<String> roleCodes) {
 }

@@ -1,40 +1,45 @@
 package com.smartlab.controller.admin;
 
 import java.util.List;
+import java.util.UUID;
 
 import org.springframework.context.annotation.Profile;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.smartlab.dto.response.admin.AdminRoleCatalogResponse;
-import com.smartlab.mapper.AdminUserApiMapper;
-import com.smartlab.security.AuthenticatedActorResolver;
-import com.smartlab.service.admin.AdminUserRoleService;
+import com.smartlab.dto.response.admin.AdminPermissionResponse;
+import com.smartlab.dto.response.admin.AdminSystemRoleResponse;
+import com.smartlab.mapper.AdminRoleCatalogApiMapper;
+import com.smartlab.service.admin.AdminRoleCatalogService;
 
 @RestController
 @RequestMapping("/api/admin/roles")
 @Profile("!nodb")
 public class AdminRoleController {
 
-	private final AdminUserRoleService adminUserRoleService;
-	private final AdminUserApiMapper mapper;
-	private final AuthenticatedActorResolver actorResolver;
+	private final AdminRoleCatalogService adminRoleCatalogService;
+	private final AdminRoleCatalogApiMapper mapper;
 
-	public AdminRoleController(
-			AdminUserRoleService adminUserRoleService,
-			AdminUserApiMapper mapper,
-			AuthenticatedActorResolver actorResolver) {
-		this.adminUserRoleService = adminUserRoleService;
+	public AdminRoleController(AdminRoleCatalogService adminRoleCatalogService, AdminRoleCatalogApiMapper mapper) {
+		this.adminRoleCatalogService = adminRoleCatalogService;
 		this.mapper = mapper;
-		this.actorResolver = actorResolver;
 	}
 
 	@GetMapping
-	public List<AdminRoleCatalogResponse> listRoles() {
-		return adminUserRoleService.listRoleCatalog(actorResolver.requireActorUserId())
+	public List<AdminSystemRoleResponse> listRoles() {
+		return adminRoleCatalogService.listRoles()
 				.stream()
-				.map(mapper::toRoleCatalogResponse)
+				.map(mapper::toRoleResponse)
+				.toList();
+	}
+
+	@GetMapping("/{roleId}/permissions")
+	public List<AdminPermissionResponse> listPermissionsForRole(@PathVariable UUID roleId) {
+		return adminRoleCatalogService.listPermissionsForRole(roleId)
+				.stream()
+				.map(mapper::toPermissionResponse)
 				.toList();
 	}
 }

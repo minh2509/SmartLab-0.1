@@ -14,9 +14,12 @@ import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.smartlab.entity.Role;
 import com.smartlab.entity.User;
+import com.smartlab.entity.UserRole;
 import com.smartlab.enums.UserAccountStatus;
 import com.smartlab.enums.UserRoleStatus;
+import com.smartlab.repository.RolePermissionRepository;
 import com.smartlab.repository.UserRepository;
 import com.smartlab.repository.UserRoleRepository;
 
@@ -28,10 +31,15 @@ public class DatabaseUserDetailsService implements UserDetailsService {
 
 	private final UserRepository userRepository;
 	private final UserRoleRepository userRoleRepository;
+	private final RolePermissionRepository rolePermissionRepository;
 
-	public DatabaseUserDetailsService(UserRepository userRepository, UserRoleRepository userRoleRepository) {
+	public DatabaseUserDetailsService(
+			UserRepository userRepository,
+			UserRoleRepository userRoleRepository,
+			RolePermissionRepository rolePermissionRepository) {
 		this.userRepository = userRepository;
 		this.userRoleRepository = userRoleRepository;
+		this.rolePermissionRepository = rolePermissionRepository;
 	}
 
 	@Override
@@ -48,12 +56,25 @@ public class DatabaseUserDetailsService implements UserDetailsService {
 			throw new DisabledException(GENERIC_AUTHENTICATION_FAILURE);
 		}
 
+		List<UserRole> activeUserRoles = userRoleRepository.findByUserAndStatus(user, UserRoleStatus.ACTIVE);
 		Set<SimpleGrantedAuthority> authorities = new LinkedHashSet<>();
-		userRoleRepository.findByUserAndStatus(user, UserRoleStatus.ACTIVE).forEach(userRole -> {
+		activeUserRoles.forEach(userRole -> {
 			if (userRole.getRole() != null && userRole.getRole().getCode() != null) {
-				authorities.add(new SimpleGrantedAuthority("ROLE_" + userRole.getRole().getCode()));
+				authorities.add(new SimpleGrantedAuthority(SecurityAuthorities.role(userRole.getRole().getCode())));
 			}
 		});
+		List<Role> activeRoles = activeUserRoles.stream()
+				.map(UserRole::getRole)
+				.filter(role -> role != null)
+				.toList();
+		if (!activeRoles.isEmpty()) {
+			rolePermissionRepository.findByRoleIn(activeRoles).forEach(rolePermission -> {
+				if (rolePermission.getPermission() != null && rolePermission.getPermission().getCode() != null) {
+					authorities.add(new SimpleGrantedAuthority(
+							SecurityAuthorities.permission(rolePermission.getPermission().getCode())));
+				}
+			});
+		}
 
 		return new SmartLabUserPrincipal(
 				user.getId(),

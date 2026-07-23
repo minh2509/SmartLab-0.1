@@ -6,10 +6,12 @@ import java.util.UUID;
 
 import org.springframework.context.annotation.Profile;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -17,7 +19,9 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.smartlab.dto.request.admin.ChangeUserStatusRequest;
 import com.smartlab.dto.request.admin.CreateAdminUserRequest;
+import com.smartlab.dto.request.admin.ResetUserPasswordRequest;
 import com.smartlab.dto.request.admin.UpdateAdminUserRequest;
+import com.smartlab.dto.response.admin.AdminUserCredentialResponse;
 import com.smartlab.dto.response.admin.AdminUserResponse;
 import com.smartlab.enums.UserAccountStatus;
 import com.smartlab.mapper.AdminUserApiMapper;
@@ -45,7 +49,7 @@ public class AdminUserController {
 	}
 
 	@PostMapping
-	public ResponseEntity<AdminUserResponse> createUser(@Valid @RequestBody CreateAdminUserRequest request) {
+	public ResponseEntity<AdminUserCredentialResponse> createUser(@Valid @RequestBody CreateAdminUserRequest request) {
 		UUID actorUserId = actorResolver.requireActorUserId();
 		AdminUserService.ManagedUserSummary created = adminUserService.createManagedUser(
 				new AdminUserService.CreateManagedUserCommand(
@@ -58,7 +62,7 @@ public class AdminUserController {
 						request.roleCodes()));
 		return ResponseEntity
 				.created(URI.create("/api/admin/users/" + created.id()))
-				.body(mapper.toUserResponse(created));
+				.body(mapper.toCredentialResponse(created));
 	}
 
 	@GetMapping("/{userId}")
@@ -85,6 +89,17 @@ public class AdminUserController {
 	public AdminUserResponse updateUser(
 			@PathVariable UUID userId,
 			@Valid @RequestBody UpdateAdminUserRequest request) {
+		return updateUserInternal(userId, request);
+	}
+
+	@PutMapping("/{userId}")
+	public AdminUserResponse replaceUser(
+			@PathVariable UUID userId,
+			@Valid @RequestBody UpdateAdminUserRequest request) {
+		return updateUserInternal(userId, request);
+	}
+
+	private AdminUserResponse updateUserInternal(UUID userId, UpdateAdminUserRequest request) {
 		return mapper.toUserResponse(adminUserService.updateManagedUser(
 				new AdminUserService.UpdateManagedUserCommand(
 						actorResolver.requireActorUserId(),
@@ -100,10 +115,43 @@ public class AdminUserController {
 	public AdminUserResponse changeUserStatus(
 			@PathVariable UUID userId,
 			@Valid @RequestBody ChangeUserStatusRequest request) {
+		return changeUserStatusInternal(userId, request.status());
+	}
+
+	@PatchMapping("/{userId}/lock")
+	public AdminUserResponse lockUser(@PathVariable UUID userId) {
+		return changeUserStatusInternal(userId, UserAccountStatus.LOCKED);
+	}
+
+	@PatchMapping("/{userId}/unlock")
+	public AdminUserResponse unlockUser(@PathVariable UUID userId) {
+		return changeUserStatusInternal(userId, UserAccountStatus.ACTIVE);
+	}
+
+	@PatchMapping("/{userId}/reset-password")
+	public AdminUserCredentialResponse resetPassword(
+			@PathVariable UUID userId,
+			@Valid @RequestBody ResetUserPasswordRequest request) {
+		return mapper.toCredentialResponse(adminUserService.resetTemporaryPassword(
+				new AdminUserService.ResetTemporaryPasswordCommand(
+						actorResolver.requireActorUserId(),
+						userId,
+						request.temporaryPassword())));
+	}
+
+	@DeleteMapping("/{userId}")
+	public ResponseEntity<Void> softDeleteUser(@PathVariable UUID userId) {
+		adminUserService.softDeleteUser(new AdminUserService.SoftDeleteUserCommand(
+				actorResolver.requireActorUserId(),
+				userId));
+		return ResponseEntity.noContent().build();
+	}
+
+	private AdminUserResponse changeUserStatusInternal(UUID userId, UserAccountStatus status) {
 		return mapper.toUserResponse(adminUserService.changeAccountStatus(
 				new AdminUserService.ChangeAccountStatusCommand(
 						actorResolver.requireActorUserId(),
 						userId,
-						request.status())));
+						status)));
 	}
 }

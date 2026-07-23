@@ -71,7 +71,10 @@ class AdminUserRoleControllerTests {
 						"Member User",
 						null,
 						UserAccountStatus.ACTIVE,
-						List.of("LEADER", "MEMBER")));
+						null,
+						List.of("LEADER", "MEMBER"),
+						null,
+						false));
 
 		mockMvc.perform(put("/api/admin/users/{userId}/roles", userId)
 						.contentType(MediaType.APPLICATION_JSON)

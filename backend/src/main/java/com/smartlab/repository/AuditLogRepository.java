@@ -14,6 +14,8 @@ public interface AuditLogRepository extends JpaRepository<AuditLog, UUID> {
 
 	List<AuditLog> findByLab(Lab lab);
 
+	List<AuditLog> findByLabOrderByCreatedAtDesc(Lab lab);
+
 	List<AuditLog> findByActor(User actor);
 
 	List<AuditLog> findByAction(String action);
