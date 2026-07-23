@@ -45,6 +45,7 @@ public class JwtTokenService {
 				.claim("full_name", principal.fullName())
 				.claim("account_status", principal.accountStatus().name())
 				.claim("roles", roleCodes(principal))
+				.claim("permissions", permissionCodes(principal))
 				.build();
 		String token = jwtEncoder.encode(JwtEncoderParameters.from(
 				JwsHeader.with(MacAlgorithm.HS256).build(),
@@ -62,6 +63,16 @@ public class JwtTokenService {
 				.map(GrantedAuthority::getAuthority)
 				.filter(authority -> authority.startsWith("ROLE_"))
 				.map(authority -> authority.substring("ROLE_".length()))
+				.distinct()
+				.sorted()
+				.toList();
+	}
+
+	private static List<String> permissionCodes(SmartLabUserPrincipal principal) {
+		return principal.getAuthorities().stream()
+				.map(GrantedAuthority::getAuthority)
+				.filter(authority -> authority.startsWith(SecurityAuthorities.PERMISSION_PREFIX))
+				.map(authority -> authority.substring(SecurityAuthorities.PERMISSION_PREFIX.length()))
 				.distinct()
 				.sorted()
 				.toList();

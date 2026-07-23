@@ -41,7 +41,11 @@ class JwtTokenServiceTests {
 	@Test
 	void createsSignedAccessTokenWithStableClaimsAndSafePayload() {
 		JwtTokenService tokenService = tokenService(SECRET, 900, Clock.fixed(NOW, ZoneOffset.UTC));
-		SmartLabUserPrincipal principal = principal("ADMIN", "MEMBER", "ADMIN");
+		SmartLabUserPrincipal principal = principalWithAuthorities(
+				"ROLE_ADMIN",
+				"ROLE_MEMBER",
+				"ROLE_ADMIN",
+				SecurityAuthorities.permission(SecurityAuthorities.ADMIN_ACCESS));
 
 		IssuedAccessToken issued = tokenService.issueAccessToken(principal);
 		Jwt decoded = decoder(SECRET).decode(issued.tokenValue());
@@ -59,6 +63,7 @@ class JwtTokenServiceTests {
 		assertEquals("Admin User", decoded.getClaimAsString("full_name"));
 		assertEquals("ACTIVE", decoded.getClaimAsString("account_status"));
 		assertEquals(List.of("ADMIN", "MEMBER"), decoded.getClaimAsStringList("roles"));
+		assertEquals(List.of(SecurityAuthorities.ADMIN_ACCESS), decoded.getClaimAsStringList("permissions"));
 		assertTrue(decoded.hasClaim("jti"));
 		assertFalse(decoded.getTokenValue().contains("bcrypt-hash"));
 		assertFalse(decoded.getClaims().toString().contains("bcrypt-hash"));
@@ -138,6 +143,11 @@ class JwtTokenServiceTests {
 	}
 
 	private static SmartLabUserPrincipal principal(String... roles) {
+		return principalWithAuthorities(
+				Arrays.stream(roles).map(role -> "ROLE_" + role).toArray(String[]::new));
+	}
+
+	private static SmartLabUserPrincipal principalWithAuthorities(String... authorities) {
 		return new SmartLabUserPrincipal(
 				UUID.randomUUID(),
 				UUID.randomUUID(),
@@ -145,7 +155,7 @@ class JwtTokenServiceTests {
 				"Admin User",
 				"bcrypt-hash",
 				UserAccountStatus.ACTIVE,
-				Arrays.stream(roles).map(role -> new SimpleGrantedAuthority("ROLE_" + role)).toList());
+				Arrays.stream(authorities).map(SimpleGrantedAuthority::new).toList());
 	}
 
 	private static String base64(String value) {

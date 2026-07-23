@@ -19,10 +19,10 @@ import org.springframework.web.bind.annotation.RestController;
 import com.smartlab.dto.request.admin.CreateAdminUserRequest;
 import com.smartlab.dto.request.admin.ReplaceUserRolesRequest;
 import com.smartlab.dto.request.admin.UpdateAdminUserRequest;
+import com.smartlab.dto.response.admin.AdminPermissionResponse;
 import com.smartlab.dto.response.admin.AdminRoleCatalogResponse;
 import com.smartlab.dto.response.admin.AdminRoleResponse;
-import com.smartlab.dto.response.admin.AdminPostDetailResponse;
-import com.smartlab.dto.response.admin.AdminPostModerationActionResponse;
+import com.smartlab.dto.response.admin.AdminSystemRoleResponse;
 import com.smartlab.dto.response.admin.AdminUserResponse;
 import com.smartlab.dto.response.admin.AdminUserRoleResponse;
 import com.smartlab.entity.Post;
@@ -37,6 +37,7 @@ class AdminApiStructureTests {
 		assertControllerBoundary(AdminUserController.class);
 		assertControllerBoundary(AdminRoleController.class);
 		assertControllerBoundary(AdminUserRoleController.class);
+		assertControllerBoundary(AdminRoleController.class);
 	}
 
 	@Test
@@ -52,6 +53,8 @@ class AdminApiStructureTests {
 		assertNoCredentialComponent(AdminUserResponse.class);
 		assertNoCredentialComponent(AdminRoleCatalogResponse.class);
 		assertNoCredentialComponent(AdminRoleResponse.class);
+		assertNoCredentialComponent(AdminSystemRoleResponse.class);
+		assertNoCredentialComponent(AdminPermissionResponse.class);
 		assertNoCredentialComponent(AdminUserRoleResponse.class);
 		assertNoCredentialComponent(AdminPostDetailResponse.class);
 		assertNoCredentialComponent(AdminPostDetailResponse.AuthorResponse.class);

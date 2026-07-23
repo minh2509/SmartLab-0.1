@@ -2,6 +2,7 @@ package com.smartlab.security;
 
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.httpBasic;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -16,6 +17,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -87,6 +89,24 @@ class AdminApiSecurityTests {
 	}
 
 	@Test
+	void swaggerEndpointsArePublic() throws Exception {
+		assertNotSecured(mockMvc.perform(get("/swagger-ui/index.html")).andReturn());
+		assertNotSecured(mockMvc.perform(get("/v3/api-docs")).andReturn());
+	}
+
+	@Test
+	void loginEndpointIsPublicAndReturnsCredentialFailureMessage() throws Exception {
+		mockMvc.perform(post("/api/auth/login")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{"email":"admin@example.test","password":"wrong-password"}
+								"""))
+				.andExpect(status().isUnauthorized())
+				.andExpect(jsonPath("$.message").value("Invalid email or password."))
+				.andExpect(jsonPath("$.path").value("/api/auth/login"));
+	}
+
+	@Test
 	void unauthenticatedAdminApiRequestReturnsJsonUnauthorized() throws Exception {
 		mockMvc.perform(get("/api/admin/probe"))
 				.andExpect(status().isUnauthorized())
@@ -102,83 +122,21 @@ class AdminApiSecurityTests {
 	}
 
 	@Test
-	void jwtAdminRolesCanAccessAdminApi() throws Exception {
-		mockMvc.perform(get("/api/admin/probe").header("Authorization", "Bearer " + loginToken("super@example.test")))
+	void usersWithAdminAccessPermissionCanAccessAdminApi() throws Exception {
+		mockMvc.perform(get("/api/admin/probe").with(httpBasic("super@example.edu", "password")))
 				.andExpect(status().isOk());
 		mockMvc.perform(get("/api/admin/probe").header("Authorization", "Bearer " + loginToken("admin@example.test")))
 				.andExpect(status().isOk());
 	}
 
 	@Test
-	void adminPostListUsesExistingAdminAuthorizationRules() throws Exception {
-		mockMvc.perform(get("/api/admin/posts"))
-				.andExpect(status().isUnauthorized());
-		mockMvc.perform(get("/api/admin/posts").header("Authorization", "Bearer " + loginToken("member@example.test")))
-				.andExpect(status().isForbidden());
-		mockMvc.perform(get("/api/admin/posts").header("Authorization", "Bearer " + loginToken("leader@example.test")))
-				.andExpect(status().isForbidden());
-		mockMvc.perform(get("/api/admin/posts").header("Authorization", "Bearer " + loginToken("admin@example.test")))
-				.andExpect(status().isOk());
-		mockMvc.perform(get("/api/admin/posts").header("Authorization", "Bearer " + loginToken("super@example.test")))
-				.andExpect(status().isOk());
-	}
-
-	@Test
-	void adminPendingPostListUsesExistingAdminAuthorizationRules() throws Exception {
-		mockMvc.perform(get("/api/admin/posts/pending"))
-				.andExpect(status().isUnauthorized());
-		mockMvc.perform(get("/api/admin/posts/pending").header("Authorization", "Bearer " + loginToken("member@example.test")))
-				.andExpect(status().isForbidden());
-		mockMvc.perform(get("/api/admin/posts/pending").header("Authorization", "Bearer " + loginToken("leader@example.test")))
-				.andExpect(status().isForbidden());
-		mockMvc.perform(get("/api/admin/posts/pending").header("Authorization", "Bearer " + loginToken("admin@example.test")))
-				.andExpect(status().isOk());
-		mockMvc.perform(get("/api/admin/posts/pending").header("Authorization", "Bearer " + loginToken("super@example.test")))
-				.andExpect(status().isOk());
-	}
-
-	@Test
-	void adminPostDetailUsesExistingAdminAuthorizationRules() throws Exception {
-		UUID postId = UUID.randomUUID();
-		mockMvc.perform(get("/api/admin/posts/{postId}", postId))
-				.andExpect(status().isUnauthorized());
-		mockMvc.perform(get("/api/admin/posts/{postId}", postId)
-						.header("Authorization", "Bearer " + loginToken("member@example.test")))
-				.andExpect(status().isForbidden());
-		mockMvc.perform(get("/api/admin/posts/{postId}", postId)
-						.header("Authorization", "Bearer " + loginToken("leader@example.test")))
-				.andExpect(status().isForbidden());
-		mockMvc.perform(get("/api/admin/posts/{postId}", postId)
-						.header("Authorization", "Bearer " + loginToken("admin@example.test")))
-				.andExpect(status().isOk());
-		mockMvc.perform(get("/api/admin/posts/{postId}", postId)
-						.header("Authorization", "Bearer " + loginToken("super@example.test")))
-				.andExpect(status().isOk());
-	}
-
-	@Test
-	void adminPostApproveUsesExistingAdminAuthorizationRules() throws Exception {
-		UUID postId = UUID.randomUUID();
-		mockMvc.perform(post("/api/admin/posts/{postId}/approve", postId))
-				.andExpect(status().isUnauthorized());
-		mockMvc.perform(post("/api/admin/posts/{postId}/approve", postId)
-						.header("Authorization", "Bearer " + loginToken("member@example.test")))
-				.andExpect(status().isForbidden());
-		mockMvc.perform(post("/api/admin/posts/{postId}/approve", postId)
-						.header("Authorization", "Bearer " + loginToken("leader@example.test")))
-				.andExpect(status().isForbidden());
-		mockMvc.perform(post("/api/admin/posts/{postId}/approve", postId)
-						.header("Authorization", "Bearer " + loginToken("admin@example.test")))
-				.andExpect(status().isOk());
-		mockMvc.perform(post("/api/admin/posts/{postId}/approve", postId)
-						.header("Authorization", "Bearer " + loginToken("super@example.test")))
-				.andExpect(status().isOk());
-	}
-
-	@Test
-	void jwtNonAdminRolesReceiveJsonForbidden() throws Exception {
-		for (String username : java.util.List.of("leader@example.test", "member@example.test", "noroles@example.test")) {
-			mockMvc.perform(get("/api/admin/probe").header("Authorization", "Bearer " + loginToken(username)))
+	void usersWithoutAdminAccessPermissionReceiveJsonForbidden() throws Exception {
+		for (String username : List.of(
+				"admin-role-only@example.edu",
+				"leader@example.edu",
+				"member@example.edu",
+				"noroles@example.edu")) {
+			mockMvc.perform(get("/api/admin/probe").with(httpBasic(username, "password")))
 					.andExpect(status().isForbidden())
 					.andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
 					.andExpect(jsonPath("$.status").value(403))
@@ -281,6 +239,12 @@ class AdminApiSecurityTests {
 		return content.substring(start, end);
 	}
 
+	private static void assertNotSecured(MvcResult result) {
+		int status = result.getResponse().getStatus();
+		assertNotEquals(401, status);
+		assertNotEquals(403, status);
+	}
+
 	private String expiredToken() {
 		JwtClaimsSet claims = JwtClaimsSet.builder()
 				.issuer(SmartLabJwtProperties.ISSUER)
@@ -372,11 +336,28 @@ class AdminApiSecurityTests {
 		UserDetailsService userDetailsService(PasswordEncoder passwordEncoder) {
 			String encodedPassword = passwordEncoder.encode("password");
 			return username -> switch (username) {
-				case "super@example.test" -> principal(username, encodedPassword, "ROLE_SUPER_ADMIN");
-				case "admin@example.test" -> principal(username, encodedPassword, "ROLE_ADMIN");
-				case "leader@example.test" -> principal(username, encodedPassword, "ROLE_LEADER");
-				case "member@example.test" -> principal(username, encodedPassword, "ROLE_MEMBER");
-				case "noroles@example.test" -> principal(username, encodedPassword);
+				case "super@example.edu" -> principal(
+						username,
+						encodedPassword,
+						"ROLE_SUPER_ADMIN",
+						SecurityAuthorities.permission(SecurityAuthorities.ADMIN_ACCESS));
+				case "admin@example.edu" -> principal(
+						username,
+						encodedPassword,
+						"ROLE_ADMIN",
+						SecurityAuthorities.permission(SecurityAuthorities.ADMIN_ACCESS));
+				case "admin-role-only@example.edu" -> principal(username, encodedPassword, "ROLE_ADMIN");
+				case "leader@example.edu" -> principal(
+						username,
+						encodedPassword,
+						"ROLE_LEADER",
+						SecurityAuthorities.permission("POST_CREATE"));
+				case "member@example.edu" -> principal(
+						username,
+						encodedPassword,
+						"ROLE_MEMBER",
+						SecurityAuthorities.permission("POST_CREATE"));
+				case "noroles@example.edu" -> principal(username, encodedPassword);
 				default -> throw new UsernameNotFoundException("Authentication failed.");
 			};
 		}

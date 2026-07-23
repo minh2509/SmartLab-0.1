@@ -1,7 +1,6 @@
 package com.smartlab.controller.admin;
 
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -15,38 +14,63 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import com.smartlab.exception.ApiExceptionHandler;
-import com.smartlab.mapper.AdminUserApiMapper;
-import com.smartlab.security.AuthenticatedActorResolver;
-import com.smartlab.service.admin.AdminUserRoleService;
+import com.smartlab.exception.ResourceNotFoundException;
+import com.smartlab.mapper.AdminRoleCatalogApiMapper;
+import com.smartlab.service.admin.AdminRoleCatalogService;
 
 class AdminRoleControllerTests {
 
-	private final AdminUserRoleService adminUserRoleService = mock(AdminUserRoleService.class);
-	private final AuthenticatedActorResolver actorResolver = mock(AuthenticatedActorResolver.class);
+	private final AdminRoleCatalogService adminRoleCatalogService = mock(AdminRoleCatalogService.class);
 	private final MockMvc mockMvc = MockMvcBuilders
-			.standaloneSetup(new AdminRoleController(adminUserRoleService, new AdminUserApiMapper(), actorResolver))
+			.standaloneSetup(new AdminRoleController(adminRoleCatalogService, new AdminRoleCatalogApiMapper()))
 			.setControllerAdvice(new ApiExceptionHandler())
 			.build();
 
 	@Test
-	void listRolesReturnsCatalogResponsesWithAssignableFlags() throws Exception {
-		UUID actorUserId = UUID.randomUUID();
-		UUID adminRoleId = UUID.randomUUID();
-		UUID superAdminRoleId = UUID.randomUUID();
-		when(actorResolver.requireActorUserId()).thenReturn(actorUserId);
-		when(adminUserRoleService.listRoleCatalog(actorUserId))
-				.thenReturn(List.of(
-						new AdminUserRoleService.RoleCatalogSummary(adminRoleId, "ADMIN", "Admin", true),
-						new AdminUserRoleService.RoleCatalogSummary(superAdminRoleId, "SUPER_ADMIN", "Super Admin", false)));
+	void listRolesReturnsSystemRoleCatalog() throws Exception {
+		UUID adminId = UUID.randomUUID();
+		when(adminRoleCatalogService.listRoles())
+				.thenReturn(List.of(new AdminRoleCatalogService.RoleSummary(
+						adminId,
+						"ADMIN",
+						"Admin",
+						"Lab administrator role")));
 
 		mockMvc.perform(get("/api/admin/roles"))
 				.andExpect(status().isOk())
-				.andExpect(jsonPath("$[0].roleId").value(adminRoleId.toString()))
+				.andExpect(jsonPath("$[0].id").value(adminId.toString()))
 				.andExpect(jsonPath("$[0].code").value("ADMIN"))
-				.andExpect(jsonPath("$[0].assignable").value(true))
-				.andExpect(jsonPath("$[1].code").value("SUPER_ADMIN"))
-				.andExpect(jsonPath("$[1].assignable").value(false));
+				.andExpect(jsonPath("$[0].name").value("Admin"))
+				.andExpect(jsonPath("$[0].description").value("Lab administrator role"));
+	}
 
-		verify(adminUserRoleService).listRoleCatalog(actorUserId);
+	@Test
+	void listPermissionsForRoleReturnsPermissionCatalog() throws Exception {
+		UUID roleId = UUID.randomUUID();
+		UUID permissionId = UUID.randomUUID();
+		when(adminRoleCatalogService.listPermissionsForRole(roleId))
+				.thenReturn(List.of(new AdminRoleCatalogService.PermissionSummary(
+						permissionId,
+						"USER_MANAGE",
+						"Manage users",
+						"ADMIN",
+						"Create, update, lock, unlock, reset, and soft-delete user accounts")));
+
+		mockMvc.perform(get("/api/admin/roles/{roleId}/permissions", roleId))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$[0].id").value(permissionId.toString()))
+				.andExpect(jsonPath("$[0].code").value("USER_MANAGE"))
+				.andExpect(jsonPath("$[0].module").value("ADMIN"));
+	}
+
+	@Test
+	void missingRoleUsesGlobalExceptionHandlerNotFoundMapping() throws Exception {
+		UUID roleId = UUID.randomUUID();
+		when(adminRoleCatalogService.listPermissionsForRole(roleId))
+				.thenThrow(new ResourceNotFoundException("Role was not found."));
+
+		mockMvc.perform(get("/api/admin/roles/{roleId}/permissions", roleId))
+				.andExpect(status().isNotFound())
+				.andExpect(jsonPath("$.message").value("Role was not found."));
 	}
 }

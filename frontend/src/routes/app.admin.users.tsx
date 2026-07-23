@@ -1,7 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { Lock, Pencil, Plus, Search, Unlock, Users } from "lucide-react";
-import { useMemo, useState } from "react";
+import { Lock, Pencil, Plus, Search, Trash2, Unlock, Users } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 import { AccountStatusDialog } from "@/components/app/users/AccountStatusDialog";
+import { DeleteUserDialog } from "@/components/app/users/DeleteUserDialog";
 import { UserFormDialog } from "@/components/app/users/UserFormDialog";
 import { EmptyState, PageHeader, Panel, StatusPill } from "@/components/app/ui";
 import { useAuth } from "@/lib/auth";
@@ -29,20 +31,26 @@ type RoleFilter = "all" | Role;
 type StatusFilter = "all" | AccountStatus;
 
 function AdminUsersPage() {
-  const { user, activeRole } = useAuth();
+  const { user, activeRole, accessToken } = useAuth();
   const { projects } = useProjects();
-  const { users, create, update, updateRoles, lock, unlock } = useUsers();
+  const { users, loading, loadError, create, update, updateRoles, lock, unlock, remove } =
+    useUsers(accessToken);
   const [query, setQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState<RoleFilter>("all");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<UserAccount | null>(null);
   const [statusTarget, setStatusTarget] = useState<UserAccount | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<UserAccount | null>(null);
   const [statusAction, setStatusAction] = useState<"lock" | "unlock">("lock");
   const [saving, setSaving] = useState(false);
   const [statusPending, setStatusPending] = useState(false);
+  const [deletePending, setDeletePending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (loadError) toast.error(loadError);
+  }, [loadError]);
 
   const filtered = useMemo(
     () =>
@@ -87,14 +95,13 @@ function AdminUsersPage() {
   const activeCount = users.filter((account) => account.status === "active").length;
   const adminCount = users.filter((account) => account.roles.includes("admin")).length;
 
-  const saveUser = (draft: UserDraft) => {
+  const saveUser = async (draft: UserDraft) => {
     if (saving) return;
     setSaving(true);
     setError(null);
-    setSuccess(null);
     const result = editing
-      ? (() => {
-          const roleResult = updateRoles(actor, editing.id, draft.roles, projects);
+      ? await (async () => {
+          const roleResult = await updateRoles(actor, editing.id, draft.roles, projects);
           return roleResult.ok
             ? update(actor, editing.id, {
                 fullName: draft.fullName,
@@ -103,32 +110,57 @@ function AdminUsersPage() {
               })
             : roleResult;
         })()
-      : create(actor, draft);
+      : await create(actor, draft);
     setSaving(false);
     if (!result.ok) {
       setError(result.error);
+      toast.error(result.error);
       return;
     }
     setCreating(false);
     setEditing(null);
-    setSuccess(editing ? "User account updated." : "User account created.");
+    if (editing) {
+      toast.success("User account updated.");
+    } else if ("temporaryPassword" in result.value && result.value.temporaryPassword) {
+      toast.success(`User account created. Temporary password: ${result.value.temporaryPassword}`);
+    } else {
+      toast.success("User account created.");
+    }
   };
 
-  const runStatusAction = () => {
+  const runStatusAction = async () => {
     if (!statusTarget || statusPending) return;
     setStatusPending(true);
     setError(null);
-    setSuccess(null);
     const result =
-      statusAction === "lock" ? lock(actor, statusTarget.id) : unlock(actor, statusTarget.id);
+      statusAction === "lock"
+        ? await lock(actor, statusTarget.id)
+        : await unlock(actor, statusTarget.id);
     setStatusPending(false);
     if (!result.ok) {
       setError(result.error);
+      toast.error(result.error);
       return;
     }
     if (statusAction === "lock") clearSessionIfUser(statusTarget.id);
-    setSuccess(statusAction === "lock" ? "Account locked." : "Account unlocked.");
+    toast.success(statusAction === "lock" ? "Account locked." : "Account unlocked.");
     setStatusTarget(null);
+  };
+
+  const runDeleteAction = async () => {
+    if (!deleteTarget || deletePending) return;
+    setDeletePending(true);
+    setError(null);
+    const result = await remove(actor, deleteTarget.id);
+    setDeletePending(false);
+    if (!result.ok) {
+      setError(result.error);
+      toast.error(result.error);
+      return;
+    }
+    clearSessionIfUser(deleteTarget.id);
+    toast.success("User account deleted.");
+    setDeleteTarget(null);
   };
 
   return (
@@ -136,14 +168,13 @@ function AdminUsersPage() {
       <PageHeader
         eyebrow={user.isMainAdmin ? "Main Admin" : "Admin"}
         title="User management"
-        description="Manage frontend-demo lab accounts, role assignments, and account lock status."
+        description="Manage backend lab accounts, role assignments, and account status."
         action={
           <button
             onClick={() => {
               setCreating(true);
               setEditing(null);
               setError(null);
-              setSuccess(null);
             }}
             className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90"
           >
@@ -151,17 +182,6 @@ function AdminUsersPage() {
           </button>
         }
       />
-
-      {error ? (
-        <div className="mb-4 rounded-md border border-[color:var(--destructive)]/40 bg-[color-mix(in_oklab,var(--destructive)_10%,transparent)] px-3 py-2 text-xs text-[color:var(--destructive)]">
-          {error}
-        </div>
-      ) : null}
-      {success ? (
-        <div className="mb-4 rounded-md border border-[color-mix(in_oklab,var(--emerald-ink)_35%,transparent)] bg-[color-mix(in_oklab,var(--emerald-ink)_10%,transparent)] px-3 py-2 text-xs text-[color:var(--emerald-ink)]">
-          {success}
-        </div>
-      ) : null}
 
       <div className="mb-6 grid gap-4 sm:grid-cols-3">
         <MiniStat label="Total users" value={users.length} />
@@ -171,7 +191,9 @@ function AdminUsersPage() {
 
       <Panel
         title="Accounts"
-        description={`${filtered.length} shown`}
+        description={
+          loading ? "Loading from database..." : `${filtered.length} shown from database`
+        }
         action={
           <div className="flex flex-wrap items-center gap-2">
             <div className="relative">
@@ -206,7 +228,9 @@ function AdminUsersPage() {
         }
         className="overflow-hidden"
       >
-        {filtered.length === 0 ? (
+        {loading ? (
+          <EmptyState title="Loading users" hint="Fetching accounts from the backend database." />
+        ) : filtered.length === 0 ? (
           <EmptyState
             title={users.length === 0 ? "No users" : "No users match these filters"}
             hint="Try a different search, role, or account-status filter."
@@ -227,6 +251,7 @@ function AdminUsersPage() {
                 {filtered.map((account) => {
                   const editBlocked = getEditBlock(actor, account);
                   const statusBlocked = getStatusBlock(actor, account);
+                  const deleteBlocked = getDeleteBlock(actor, account);
                   return (
                     <tr key={account.id} className="border-t border-hairline align-top">
                       <td className="px-5 py-3">
@@ -306,6 +331,22 @@ function AdminUsersPage() {
                             )}
                             {account.status === "active" ? "Lock" : "Unlock"}
                           </button>
+                          <button
+                            disabled={!!deleteBlocked}
+                            onClick={() => {
+                              setDeleteTarget(account);
+                              setError(null);
+                            }}
+                            title={deleteBlocked ?? "Delete user"}
+                            className={cn(
+                              "inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs",
+                              deleteBlocked
+                                ? "cursor-not-allowed text-ink-soft/40"
+                                : "text-ink-soft hover:bg-muted hover:text-[color:var(--destructive)]",
+                            )}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" /> Delete
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -350,6 +391,19 @@ function AdminUsersPage() {
         }}
         onConfirm={runStatusAction}
       />
+
+      <DeleteUserDialog
+        user={deleteTarget}
+        open={!!deleteTarget}
+        pending={deletePending}
+        onClose={() => {
+          if (!deletePending) {
+            setDeleteTarget(null);
+            setError(null);
+          }
+        }}
+        onConfirm={runDeleteAction}
+      />
     </>
   );
 }
@@ -367,6 +421,14 @@ function getStatusBlock(actor: UserActor, target: UserAccount) {
   if (target.isMainAdmin) return "Main Admin cannot be locked.";
   if (actor.isMainAdmin) return null;
   if (target.roles.includes("admin")) return "Regular Admins cannot lock or unlock Admin accounts.";
+  return null;
+}
+
+function getDeleteBlock(actor: UserActor, target: UserAccount) {
+  if (actor.id === target.id) return "Admins cannot delete their own account.";
+  if (target.isMainAdmin) return "Main Admin cannot be deleted.";
+  if (actor.isMainAdmin) return null;
+  if (target.roles.includes("admin")) return "Regular Admins cannot delete Admin accounts.";
   return null;
 }
 

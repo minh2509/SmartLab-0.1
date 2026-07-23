@@ -2,28 +2,24 @@ import { useEffect, useState } from "react";
 import { X } from "lucide-react";
 import type { UserAccount } from "@/lib/users-data";
 
-export function AccountStatusDialog({
+export function DeleteUserDialog({
   user,
-  action,
   open,
   pending,
-  error,
   onClose,
   onConfirm,
 }: {
   user: UserAccount | null;
-  action: "lock" | "unlock";
   open: boolean;
   pending: boolean;
-  error?: string | null;
   onClose: () => void;
   onConfirm: () => void;
 }) {
   const [confirmation, setConfirmation] = useState("");
-  useEffect(() => setConfirmation(""), [user?.id, action, open]);
+  useEffect(() => setConfirmation(""), [user?.id, open]);
   if (!open || !user) return null;
 
-  const phrase = action === "lock" ? "LOCK ACCOUNT" : "UNLOCK ACCOUNT";
+  const phrase = "DELETE ACCOUNT";
   const valid = confirmation.trim() === phrase;
 
   return (
@@ -40,7 +36,7 @@ export function AccountStatusDialog({
         <header className="flex items-start justify-between gap-4 border-b border-hairline px-5 py-4">
           <div>
             <div className="text-[11px] uppercase tracking-[0.14em] text-ink-soft">
-              {action === "lock" ? "Lock account" : "Unlock account"}
+              Delete account
             </div>
             <h2 className="mt-0.5 text-sm font-semibold text-ink">{user.fullName}</h2>
           </div>
@@ -57,9 +53,8 @@ export function AccountStatusDialog({
 
         <div className="space-y-4 p-5">
           <p className="text-sm leading-relaxed text-ink-soft">
-            {action === "lock"
-              ? "The user will no longer be able to sign in. Existing project assignments, posts, tasks, evaluations, calendar events, and historical records remain unchanged."
-              : "The user will be able to sign in again with their current backend password. Historical records are not modified."}
+            This will soft-delete the backend account. The user will disappear from active admin
+            lists, while historical records remain in the database.
           </p>
           <label className="block">
             <div className="mb-1 text-[11px] uppercase tracking-[0.14em] text-ink-soft">
@@ -71,11 +66,6 @@ export function AccountStatusDialog({
               className="w-full rounded-md border border-hairline bg-background px-2.5 py-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-[color:var(--cyan)]/40"
             />
           </label>
-          {error ? (
-            <div className="rounded-md border border-[color:var(--destructive)]/40 bg-[color-mix(in_oklab,var(--destructive)_10%,transparent)] px-3 py-2 text-xs text-[color:var(--destructive)]">
-              {error}
-            </div>
-          ) : null}
         </div>
 
         <footer className="flex items-center justify-end gap-2 border-t border-hairline px-5 py-4">
@@ -91,9 +81,9 @@ export function AccountStatusDialog({
             type="button"
             disabled={!valid || pending}
             onClick={onConfirm}
-            className="rounded-md bg-primary px-3.5 py-1.5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+            className="rounded-md bg-[color:var(--destructive)] px-3.5 py-1.5 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            {pending ? "Saving..." : action === "lock" ? "Lock account" : "Unlock account"}
+            {pending ? "Deleting..." : "Delete account"}
           </button>
         </footer>
       </div>

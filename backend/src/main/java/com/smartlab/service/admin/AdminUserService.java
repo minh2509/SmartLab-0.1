@@ -1,5 +1,6 @@
 package com.smartlab.service.admin;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -59,7 +60,7 @@ public class AdminUserService {
 		Lab lab = actor.lab();
 		String username = requireTrimmed(command.username(), "Username");
 		String email = normalizeRequiredEmail(command.email());
-		String temporaryPassword = requireTemporaryPassword(command.temporaryPassword());
+		String temporaryPassword = temporaryPasswordOrGenerated(command.temporaryPassword());
 		String fullName = requireTrimmed(command.fullName(), "Full name");
 		List<String> roleCodes = rolePolicy.normalizeRoleCodes(command.roleCodes());
 		rolePolicy.assertAssignableRoleCodes(actor, roleCodes);
@@ -85,7 +86,8 @@ public class AdminUserService {
 
 		User saved = userRepository.save(user);
 		assignInitialRoles(saved, roles, actor.actor());
-		return ManagedUserSummary.from(saved, roleCodes);
+		return ManagedUserSummary.from(saved, roleCodes)
+				.withTemporaryPassword(temporaryPassword, isBlank(command.temporaryPassword()));
 	}
 
 	@Transactional
@@ -145,6 +147,33 @@ public class AdminUserService {
 		}
 		user.setAccountStatus(command.status());
 		return ManagedUserSummary.from(user, rolePolicy.activeRoleCodes(user));
+	}
+
+	@Transactional
+	public ManagedUserSummary resetTemporaryPassword(ResetTemporaryPasswordCommand command) {
+		if (command == null) {
+			throw new InvalidAdminServiceInputException("Reset password command must not be null.");
+		}
+		String temporaryPassword = temporaryPasswordOrGenerated(command.temporaryPassword());
+		AdminRolePolicy.ActorContext actor = rolePolicy.requireAdminActor(command.actorUserId());
+		User user = rolePolicy.findUserInActorLab(actor, command.userId());
+		rolePolicy.assertCanMutateTarget(actor, user);
+		user.setPasswordHash(passwordEncoder.encode(temporaryPassword));
+		return ManagedUserSummary.from(user, rolePolicy.activeRoleCodes(user))
+				.withTemporaryPassword(temporaryPassword, isBlank(command.temporaryPassword()));
+	}
+
+	@Transactional
+	public void softDeleteUser(SoftDeleteUserCommand command) {
+		if (command == null) {
+			throw new InvalidAdminServiceInputException("Soft delete user command must not be null.");
+		}
+		AdminRolePolicy.ActorContext actor = rolePolicy.requireAdminActor(command.actorUserId());
+		User user = rolePolicy.findUserInActorLab(actor, command.userId());
+		rolePolicy.assertCanMutateTarget(actor, user);
+		user.setAccountStatus(UserAccountStatus.DELETED);
+		user.setDeletedAt(OffsetDateTime.now());
+		user.setDeletedBy(actor.actor());
 	}
 
 	@Transactional(readOnly = true)
@@ -214,6 +243,17 @@ public class AdminUserService {
 		return value;
 	}
 
+	private static String temporaryPasswordOrGenerated(String value) {
+		if (!isBlank(value)) {
+			return requireTemporaryPassword(value.trim());
+		}
+		return "SL-" + UUID.randomUUID().toString().replace("-", "").substring(0, 18) + "!aA7";
+	}
+
+	private static boolean isBlank(String value) {
+		return value == null || value.trim().isBlank();
+	}
+
 	private static String normalizeRequiredEmail(String email) {
 		return requireTrimmed(email, "Email").toLowerCase(Locale.ROOT);
 	}
@@ -251,6 +291,17 @@ public class AdminUserService {
 			UserAccountStatus status) {
 	}
 
+	public record ResetTemporaryPasswordCommand(
+			UUID actorUserId,
+			UUID userId,
+			String temporaryPassword) {
+	}
+
+	public record SoftDeleteUserCommand(
+			UUID actorUserId,
+			UUID userId) {
+	}
+
 	public record ManagedUserSummary(
 			UUID id,
 			UUID labId,
@@ -259,7 +310,10 @@ public class AdminUserService {
 			String fullName,
 			UUID avatarFileId,
 			UserAccountStatus accountStatus,
-			List<String> roleCodes) {
+			OffsetDateTime lastLoginAt,
+			List<String> roleCodes,
+			String temporaryPassword,
+			boolean temporaryPasswordGenerated) {
 
 		static ManagedUserSummary from(User user, List<String> roleCodes) {
 			UUID labId = user.getLab() == null ? null : user.getLab().getId();
@@ -272,7 +326,25 @@ public class AdminUserService {
 					user.getFullName(),
 					avatarFileId,
 					user.getAccountStatus(),
-					roleCodes.stream().distinct().sorted().toList());
+					user.getLastLoginAt(),
+					roleCodes.stream().distinct().sorted().toList(),
+					null,
+					false);
+		}
+
+		ManagedUserSummary withTemporaryPassword(String temporaryPassword, boolean generated) {
+			return new ManagedUserSummary(
+					id,
+					labId,
+					username,
+					email,
+					fullName,
+					avatarFileId,
+					accountStatus,
+					lastLoginAt,
+					roleCodes,
+					temporaryPassword,
+					generated);
 		}
 	}
 }
