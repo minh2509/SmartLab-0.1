@@ -8,6 +8,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -556,6 +557,85 @@ class AdminPostControllerTests {
 				.andExpect(jsonPath("$.message").value("Post was not found."));
 	}
 
+	@Test
+	void publishPostReturnsModerationActionContractAndPassesActorAndPostId() throws Exception {
+		UUID actorUserId = UUID.randomUUID();
+		UUID postId = UUID.randomUUID();
+		UUID reviewedById = UUID.randomUUID();
+		when(actorResolver.requireActorUserId()).thenReturn(actorUserId);
+		when(adminPostService.publishPost(any(AdminPostService.PublishAdminPostCommand.class)))
+				.thenReturn(publishAction(postId, reviewedById));
+
+		mockMvc.perform(patch("/api/admin/posts/{postId}/publish", postId))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.postId").value(postId.toString()))
+				.andExpect(jsonPath("$.action").value("PUBLISH"))
+				.andExpect(jsonPath("$.fromStatus").value("APPROVED"))
+				.andExpect(jsonPath("$.toStatus").value("PUBLISHED"))
+				.andExpect(jsonPath("$.moderationStatus").value("PUBLISHED"))
+				.andExpect(jsonPath("$.reviewedById").value(reviewedById.toString()))
+				.andExpect(jsonPath("$.reviewedByName").value("Admin Reviewer"))
+				.andExpect(jsonPath("$.reviewedAt").value("2026-07-23T08:15:30Z"))
+				.andExpect(jsonPath("$.email").doesNotExist())
+				.andExpect(jsonPath("$.username").doesNotExist())
+				.andExpect(jsonPath("$.passwordHash").doesNotExist())
+				.andExpect(jsonPath("$.reviewNote").doesNotExist())
+				.andExpect(jsonPath("$.storagePath").doesNotExist())
+				.andExpect(jsonPath("$.deletedAt").doesNotExist())
+				.andExpect(content().string(not(containsString("admin@example.edu"))))
+				.andExpect(content().string(not(containsString("Full private content"))));
+
+		ArgumentCaptor<AdminPostService.PublishAdminPostCommand> captor =
+				ArgumentCaptor.forClass(AdminPostService.PublishAdminPostCommand.class);
+		verify(adminPostService).publishPost(captor.capture());
+		assertEquals(actorUserId, captor.getValue().actorUserId());
+		assertEquals(postId, captor.getValue().postId());
+	}
+
+	@Test
+	void publishPostRequestWithoutAuthenticatedActorIsUnauthorized() throws Exception {
+		when(actorResolver.requireActorUserId())
+				.thenThrow(new AuthenticationCredentialsNotFoundException("Authentication is required."));
+
+		mockMvc.perform(patch("/api/admin/posts/{postId}/publish", UUID.randomUUID()))
+				.andExpect(status().isUnauthorized())
+				.andExpect(jsonPath("$.status").value(401));
+	}
+
+	@Test
+	void malformedPublishPostIdReturnsBadRequest() throws Exception {
+		when(actorResolver.requireActorUserId()).thenReturn(UUID.randomUUID());
+
+		mockMvc.perform(patch("/api/admin/posts/not-a-uuid/publish"))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.message").value("Request validation failed."));
+	}
+
+	@Test
+	void publishPostConflictUsesExistingApiErrorFormat() throws Exception {
+		when(actorResolver.requireActorUserId()).thenReturn(UUID.randomUUID());
+		when(adminPostService.publishPost(any(AdminPostService.PublishAdminPostCommand.class)))
+				.thenThrow(new ConflictingAdminOperationException("Only approved posts can be published."));
+
+		mockMvc.perform(patch("/api/admin/posts/{postId}/publish", UUID.randomUUID()))
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.status").value(409))
+				.andExpect(jsonPath("$.error").value("Conflict"))
+				.andExpect(jsonPath("$.message").value("Only approved posts can be published."));
+	}
+
+	@Test
+	void publishPostMissingResourceUsesGenericNotFoundMessage() throws Exception {
+		when(actorResolver.requireActorUserId()).thenReturn(UUID.randomUUID());
+		when(adminPostService.publishPost(any(AdminPostService.PublishAdminPostCommand.class)))
+				.thenThrow(new ResourceNotFoundException("Post was not found."));
+
+		mockMvc.perform(patch("/api/admin/posts/{postId}/publish", UUID.randomUUID()))
+				.andExpect(status().isNotFound())
+				.andExpect(jsonPath("$.status").value(404))
+				.andExpect(jsonPath("$.message").value("Post was not found."));
+	}
+
 	private static LocalValidatorFactoryBean validator() {
 		LocalValidatorFactoryBean validator = new LocalValidatorFactoryBean();
 		validator.afterPropertiesSet();
@@ -651,6 +731,18 @@ class AdminPostControllerTests {
 				PostStatus.PENDING_REVIEW,
 				PostStatus.APPROVED,
 				PostStatus.APPROVED,
+				reviewedById,
+				"Admin Reviewer",
+				OffsetDateTime.parse("2026-07-23T08:15:30Z"));
+	}
+
+	private static AdminPostModerationActionResponse publishAction(UUID postId, UUID reviewedById) {
+		return new AdminPostModerationActionResponse(
+				postId,
+				PostModerationAction.PUBLISH,
+				PostStatus.APPROVED,
+				PostStatus.PUBLISHED,
+				PostStatus.PUBLISHED,
 				reviewedById,
 				"Admin Reviewer",
 				OffsetDateTime.parse("2026-07-23T08:15:30Z"));

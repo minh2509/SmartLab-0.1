@@ -5,6 +5,7 @@ import java.util.UUID;
 import org.springframework.context.annotation.Profile;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -79,6 +80,13 @@ public class AdminPostController {
 	@PostMapping("/{postId}/approve")
 	public AdminPostModerationActionResponse approvePost(@PathVariable UUID postId) {
 		return adminPostService.approvePost(new AdminPostService.ApproveAdminPostCommand(
+				actorResolver.requireActorUserId(),
+				postId));
+	}
+
+	@PatchMapping("/{postId}/publish")
+	public AdminPostModerationActionResponse publishPost(@PathVariable UUID postId) {
+		return adminPostService.publishPost(new AdminPostService.PublishAdminPostCommand(
 				actorResolver.requireActorUserId(),
 				postId));
 	}
