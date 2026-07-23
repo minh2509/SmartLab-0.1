@@ -27,6 +27,7 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
+import org.springframework.context.annotation.Primary;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetailsService;
@@ -39,6 +40,7 @@ import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.security.oauth2.jwt.JwtEncoderParameters;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -56,6 +58,8 @@ import com.smartlab.dto.request.admin.CreateAdminUserRequest;
 import com.smartlab.enums.UserAccountStatus;
 import com.smartlab.exception.ApiExceptionHandler;
 import com.smartlab.mapper.AuthApiMapper;
+import com.smartlab.repository.LoginHistoryRepository;
+import com.smartlab.repository.UserRepository;
 
 import jakarta.validation.Valid;
 
@@ -80,6 +84,12 @@ class AdminApiSecurityTests {
 
 	@Autowired
 	private JwtEncoder jwtEncoder;
+
+	@MockitoBean
+	private UserRepository userRepository;
+
+	@MockitoBean
+	private LoginHistoryRepository loginHistoryRepository;
 
 	@Test
 	void actuatorHealthIsPublic() throws Exception {
@@ -123,20 +133,24 @@ class AdminApiSecurityTests {
 
 	@Test
 	void usersWithAdminAccessPermissionCanAccessAdminApi() throws Exception {
-		mockMvc.perform(get("/api/admin/probe").with(httpBasic("super@example.edu", "password")))
-				.andExpect(status().isOk());
-		mockMvc.perform(get("/api/admin/probe").header("Authorization", "Bearer " + loginToken("admin@example.test")))
-				.andExpect(status().isOk());
+		for (String email : List.of(
+				"super@example.edu",
+				"admin@example.test",
+				"admin-role-only@example.edu")) {
+			mockMvc.perform(get("/api/admin/probe")
+							.header("Authorization", "Bearer " + tokenFor(email)))
+					.andExpect(status().isOk());
+		}
 	}
 
 	@Test
 	void usersWithoutAdminAccessPermissionReceiveJsonForbidden() throws Exception {
-		for (String username : List.of(
-				"admin-role-only@example.edu",
+		for (String email : List.of(
 				"leader@example.edu",
 				"member@example.edu",
 				"noroles@example.edu")) {
-			mockMvc.perform(get("/api/admin/probe").with(httpBasic(username, "password")))
+			mockMvc.perform(get("/api/admin/probe")
+							.header("Authorization", "Bearer " + tokenFor(email)))
 					.andExpect(status().isForbidden())
 					.andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
 					.andExpect(jsonPath("$.status").value(403))
@@ -157,7 +171,7 @@ class AdminApiSecurityTests {
 				.andExpect(jsonPath("$.message").value("Authentication is required."))
 				.andExpect(content().string(not(containsString("malformed-token"))));
 
-		String token = loginToken("admin@example.test");
+		String token = tokenFor("admin@example.test");
 		mockMvc.perform(get("/api/admin/probe").header("Authorization", "Bearer " + token + "tampered"))
 				.andExpect(status().isUnauthorized())
 				.andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON));
@@ -179,13 +193,13 @@ class AdminApiSecurityTests {
 		mockMvc.perform(get("/api/probe"))
 				.andExpect(status().isUnauthorized())
 				.andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON));
-		mockMvc.perform(get("/api/probe").header("Authorization", "Bearer " + loginToken("member@example.test")))
+		mockMvc.perform(get("/api/probe").header("Authorization", "Bearer " + tokenFor("member@example.edu")))
 				.andExpect(status().isOk());
 	}
 
 	@Test
 	void validTokenAccessesCurrentUserEndpoint() throws Exception {
-		mockMvc.perform(get("/api/auth/me").header("Authorization", "Bearer " + loginToken("admin@example.test")))
+		mockMvc.perform(get("/api/auth/me").header("Authorization", "Bearer " + tokenFor("admin@example.test")))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.email").value("admin@example.test"))
 				.andExpect(jsonPath("$.accountStatus").value("ACTIVE"))
@@ -196,7 +210,7 @@ class AdminApiSecurityTests {
 
 	@Test
 	void csrfIsIgnoredForRestApiMutationsButAuthenticationStillRequired() throws Exception {
-		String adminToken = loginToken("admin@example.test");
+		String adminToken = tokenFor("admin@example.test");
 		mockMvc.perform(post("/api/admin/probe")
 						.contentType(MediaType.APPLICATION_JSON)
 						.content("{}")
@@ -219,24 +233,41 @@ class AdminApiSecurityTests {
 
 	@Test
 	void bearerAuthenticationDoesNotCreateSessionCookie() throws Exception {
-		mockMvc.perform(get("/api/admin/probe").header("Authorization", "Bearer " + loginToken("admin@example.test")))
+		mockMvc.perform(get("/api/admin/probe").header("Authorization", "Bearer " + tokenFor("admin@example.test")))
 				.andExpect(status().isOk())
 				.andExpect(cookie().doesNotExist("JSESSIONID"));
 	}
 
-	private String loginToken(String email) throws Exception {
-		MvcResult result = mockMvc.perform(post("/api/auth/login")
-						.contentType(MediaType.APPLICATION_JSON)
-						.content("""
-								{"email":"%s","password":"password"}
-								""".formatted(email)))
-				.andExpect(status().isOk())
-				.andReturn();
-		String content = result.getResponse().getContentAsString();
-		String marker = "\"accessToken\":\"";
-		int start = content.indexOf(marker) + marker.length();
-		int end = content.indexOf('"', start);
-		return content.substring(start, end);
+	private String tokenFor(String email) {
+		List<String> roles = switch (email) {
+			case "super@example.edu" -> List.of("SUPER_ADMIN");
+			case "admin@example.test", "admin-role-only@example.edu" -> List.of("ADMIN");
+			case "leader@example.edu" -> List.of("LEADER");
+			case "member@example.edu" -> List.of("MEMBER");
+			default -> List.of();
+		};
+		List<String> permissions = switch (email) {
+			case "super@example.edu", "admin@example.test" ->
+				List.of(SecurityAuthorities.ADMIN_ACCESS);
+			case "leader@example.edu", "member@example.edu" -> List.of("POST_CREATE");
+			default -> List.of();
+		};
+		Instant now = Instant.now();
+		JwtClaimsSet claims = JwtClaimsSet.builder()
+				.issuer(SmartLabJwtProperties.ISSUER)
+				.subject(UUID.randomUUID().toString())
+				.issuedAt(now.minusSeconds(1))
+				.expiresAt(now.plusSeconds(900))
+				.id(UUID.randomUUID().toString())
+				.claim("lab_id", UUID.randomUUID().toString())
+				.claim("email", email)
+				.claim("full_name", "Test User")
+				.claim("account_status", "ACTIVE")
+				.claim("roles", roles)
+				.claim("permissions", permissions)
+				.build();
+		return jwtEncoder.encode(JwtEncoderParameters.from(JwsHeader.with(MacAlgorithm.HS256).build(), claims))
+				.getTokenValue();
 	}
 
 	private static void assertNotSecured(MvcResult result) {
@@ -333,6 +364,7 @@ class AdminApiSecurityTests {
 		}
 
 		@Bean
+		@Primary
 		UserDetailsService userDetailsService(PasswordEncoder passwordEncoder) {
 			String encodedPassword = passwordEncoder.encode("password");
 			return username -> switch (username) {

@@ -28,6 +28,8 @@ import { Route as AppProjectsSlugRouteImport } from './routes/app.projects_.$slu
 import { Route as AppPostsNewRouteImport } from './routes/app.posts.new'
 import { Route as AppModerationPostsRouteImport } from './routes/app.moderation.posts'
 import { Route as AppAdminUsersRouteImport } from './routes/app.admin.users'
+import { Route as AppAdminMembersRouteImport } from './routes/app.admin.members'
+import { Route as AppAdminLabRouteImport } from './routes/app.admin.lab'
 import { Route as AppPostsPostIdEditRouteImport } from './routes/app.posts_.$postId.edit'
 import { Route as AppModerationPostsPostIdRouteImport } from './routes/app.moderation.posts_.$postId'
 
@@ -126,6 +128,16 @@ const AppAdminUsersRoute = AppAdminUsersRouteImport.update({
   path: '/admin/users',
   getParentRoute: () => AppRoute,
 } as any)
+const AppAdminMembersRoute = AppAdminMembersRouteImport.update({
+  id: '/admin/members',
+  path: '/admin/members',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAdminLabRoute = AppAdminLabRouteImport.update({
+  id: '/admin/lab',
+  path: '/admin/lab',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppPostsPostIdEditRoute = AppPostsPostIdEditRouteImport.update({
   id: '/posts_/$postId/edit',
   path: '/posts/$postId/edit',
@@ -154,6 +166,8 @@ export interface FileRoutesByFullPath {
   '/app/tasks': typeof AppTasksRoute
   '/posts/$slug': typeof PostsSlugRoute
   '/projects/$slug': typeof ProjectsSlugRoute
+  '/app/admin/lab': typeof AppAdminLabRoute
+  '/app/admin/members': typeof AppAdminMembersRoute
   '/app/admin/users': typeof AppAdminUsersRoute
   '/app/moderation/posts': typeof AppModerationPostsRoute
   '/app/posts/new': typeof AppPostsNewRoute
@@ -177,6 +191,8 @@ export interface FileRoutesByTo {
   '/app/tasks': typeof AppTasksRoute
   '/posts/$slug': typeof PostsSlugRoute
   '/projects/$slug': typeof ProjectsSlugRoute
+  '/app/admin/lab': typeof AppAdminLabRoute
+  '/app/admin/members': typeof AppAdminMembersRoute
   '/app/admin/users': typeof AppAdminUsersRoute
   '/app/moderation/posts': typeof AppModerationPostsRoute
   '/app/posts/new': typeof AppPostsNewRoute
@@ -201,6 +217,8 @@ export interface FileRoutesById {
   '/app/tasks': typeof AppTasksRoute
   '/posts_/$slug': typeof PostsSlugRoute
   '/projects_/$slug': typeof ProjectsSlugRoute
+  '/app/admin/lab': typeof AppAdminLabRoute
+  '/app/admin/members': typeof AppAdminMembersRoute
   '/app/admin/users': typeof AppAdminUsersRoute
   '/app/moderation/posts': typeof AppModerationPostsRoute
   '/app/posts/new': typeof AppPostsNewRoute
@@ -226,6 +244,8 @@ export interface FileRouteTypes {
     | '/app/tasks'
     | '/posts/$slug'
     | '/projects/$slug'
+    | '/app/admin/lab'
+    | '/app/admin/members'
     | '/app/admin/users'
     | '/app/moderation/posts'
     | '/app/posts/new'
@@ -249,6 +269,8 @@ export interface FileRouteTypes {
     | '/app/tasks'
     | '/posts/$slug'
     | '/projects/$slug'
+    | '/app/admin/lab'
+    | '/app/admin/members'
     | '/app/admin/users'
     | '/app/moderation/posts'
     | '/app/posts/new'
@@ -272,6 +294,8 @@ export interface FileRouteTypes {
     | '/app/tasks'
     | '/posts_/$slug'
     | '/projects_/$slug'
+    | '/app/admin/lab'
+    | '/app/admin/members'
     | '/app/admin/users'
     | '/app/moderation/posts'
     | '/app/posts/new'
@@ -425,6 +449,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAdminUsersRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/admin/members': {
+      id: '/app/admin/members'
+      path: '/admin/members'
+      fullPath: '/app/admin/members'
+      preLoaderRoute: typeof AppAdminMembersRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/admin/lab': {
+      id: '/app/admin/lab'
+      path: '/admin/lab'
+      fullPath: '/app/admin/lab'
+      preLoaderRoute: typeof AppAdminLabRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/app/posts_/$postId/edit': {
       id: '/app/posts_/$postId/edit'
       path: '/posts/$postId/edit'
@@ -463,6 +501,8 @@ interface AppRouteChildren {
   AppPostsRoute: typeof AppPostsRouteWithChildren
   AppProjectsRoute: typeof AppProjectsRoute
   AppTasksRoute: typeof AppTasksRoute
+  AppAdminLabRoute: typeof AppAdminLabRoute
+  AppAdminMembersRoute: typeof AppAdminMembersRoute
   AppAdminUsersRoute: typeof AppAdminUsersRoute
   AppModerationPostsRoute: typeof AppModerationPostsRoute
   AppProjectsSlugRoute: typeof AppProjectsSlugRoute
@@ -479,6 +519,8 @@ const AppRouteChildren: AppRouteChildren = {
   AppPostsRoute: AppPostsRouteWithChildren,
   AppProjectsRoute: AppProjectsRoute,
   AppTasksRoute: AppTasksRoute,
+  AppAdminLabRoute: AppAdminLabRoute,
+  AppAdminMembersRoute: AppAdminMembersRoute,
   AppAdminUsersRoute: AppAdminUsersRoute,
   AppModerationPostsRoute: AppModerationPostsRoute,
   AppProjectsSlugRoute: AppProjectsSlugRoute,

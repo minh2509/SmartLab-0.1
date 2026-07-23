@@ -15,6 +15,8 @@ import {
   ListChecks,
   ClipboardCheck,
   CalendarDays,
+  Users2,
+  Building2,
 } from "lucide-react";
 
 type AppNavPath =
@@ -27,6 +29,8 @@ type AppNavPath =
   | "/app/posts"
   | "/app/moderation/posts"
   | "/app/admin/users"
+  | "/app/admin/members"
+  | "/app/admin/lab"
   | "/app/notifications";
 
 type NavItem = {
@@ -95,6 +99,18 @@ const NAV: NavItem[] = [
     label: "Administration",
     to: "/app/admin/users",
     icon: ShieldCheck,
+    roles: ["admin"],
+  },
+  {
+    label: "Members",
+    to: "/app/admin/members",
+    icon: Users2,
+    roles: ["admin"],
+  },
+  {
+    label: "Lab Settings",
+    to: "/app/admin/lab",
+    icon: Building2,
     roles: ["admin"],
   },
 ];

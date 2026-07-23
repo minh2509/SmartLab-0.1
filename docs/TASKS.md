@@ -16,6 +16,30 @@
 - Keep scope, verification, and evidence aligned with actual work.
 - Do not mark a task complete based only on code generation.
 
+## DEV-001: Fix Vite development server startup
+
+- Assignee: Codex
+- Status: `READY_FOR_REVIEW`
+- Progress: 100%
+- Branch: `feature/admin-lab-members`
+- Test result: Frontend typecheck and build passed; dev server verified on ports 5173 and 5174; changed-file ESLint passed; repository-wide lint remains blocked by pre-existing CRLF formatting errors.
+- Scope: Native tsconfig path resolution and dev-server port fallback only.
+- Notes: Existing unrelated working-tree changes are preserved.
+
+## DEV-002: Fix backend startup test-compilation regression
+
+- Assignee: Codex
+- Status: `READY_FOR_REVIEW`
+- Progress: 100%
+- Branch: `feature/admin-lab-members`
+- Test result: `249` tests passed with `0` failures and `0` errors;
+  packaging succeeded; the `nodb` runtime reached `ACCEPTING_TRAFFIC` and
+  `/actuator/health` returned `UP`.
+- Scope: Synchronize stale backend tests with existing source contracts and verify
+  a clean `nodb` startup.
+- Notes: No production source was changed. The verification process was stopped
+  automatically when the managed command session ended.
+
 ## ADM-000: Bootstrap Spring Boot Backend
 
 - Assignee: Minh

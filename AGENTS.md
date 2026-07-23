@@ -21,6 +21,20 @@ This is currently a demo-oriented monorepo application. The frontend still conta
 
 Do not assume that visual functionality equals production-grade security.
 
+### 1.1 Required senior engineering workflow
+
+For every significant feature, bug fix, or refactor, read and follow
+`docs/SENIOR-ENGINEERING-WORKFLOW.md` before changing source code.
+
+- Treat that document as a mandatory extension of this file.
+- Create the task documentation required there before implementation.
+- Use relevant Superpowers skills when they are installed and available.
+- Do not claim that a skill was used when it is unavailable.
+- Use the documents skill only when the requested artifact is a `.docx`;
+  normal Markdown task documentation remains repository-native text.
+- Communicate with the user in Vietnamese unless the user requests another
+  language.
+
 ---
 
 ## 2. Technical context

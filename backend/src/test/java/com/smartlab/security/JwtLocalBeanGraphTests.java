@@ -1,6 +1,7 @@
 package com.smartlab.security;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.mockito.Mockito.mock;
 
 import java.time.Clock;
 
@@ -16,6 +17,8 @@ import org.springframework.security.oauth2.jwt.JwtEncoder;
 import com.smartlab.config.JwtSecurityConfig;
 import com.smartlab.controller.auth.AuthController;
 import com.smartlab.mapper.AuthApiMapper;
+import com.smartlab.repository.LoginHistoryRepository;
+import com.smartlab.repository.UserRepository;
 
 class JwtLocalBeanGraphTests {
 
@@ -51,6 +54,16 @@ class JwtLocalBeanGraphTests {
 		@Bean
 		AuthenticationManager authenticationManager() {
 			return authentication -> authentication;
+		}
+
+		@Bean
+		UserRepository userRepository() {
+			return mock(UserRepository.class);
+		}
+
+		@Bean
+		LoginHistoryRepository loginHistoryRepository() {
+			return mock(LoginHistoryRepository.class);
 		}
 	}
 }

@@ -3,6 +3,7 @@ package com.smartlab.controller.auth;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -15,6 +16,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
@@ -33,8 +35,12 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.validation.beanvalidation.LocalValidatorFactoryBean;
 
 import com.smartlab.enums.UserAccountStatus;
+import com.smartlab.entity.LoginHistory;
+import com.smartlab.entity.User;
 import com.smartlab.exception.ApiExceptionHandler;
 import com.smartlab.mapper.AuthApiMapper;
+import com.smartlab.repository.LoginHistoryRepository;
+import com.smartlab.repository.UserRepository;
 import com.smartlab.security.IssuedAccessToken;
 import com.smartlab.security.JwtTokenService;
 import com.smartlab.security.SmartLabUserPrincipal;
@@ -43,8 +49,15 @@ class AuthControllerTests {
 
 	private final AuthenticationManager authenticationManager = mock(AuthenticationManager.class);
 	private final JwtTokenService jwtTokenService = mock(JwtTokenService.class);
+	private final UserRepository userRepository = mock(UserRepository.class);
+	private final LoginHistoryRepository loginHistoryRepository = mock(LoginHistoryRepository.class);
 	private final MockMvc mockMvc = MockMvcBuilders
-			.standaloneSetup(new AuthController(authenticationManager, jwtTokenService, new AuthApiMapper()))
+			.standaloneSetup(new AuthController(
+					authenticationManager,
+					jwtTokenService,
+					new AuthApiMapper(),
+					userRepository,
+					loginHistoryRepository))
 			.setControllerAdvice(new ApiExceptionHandler())
 			.setValidator(validator())
 			.build();
@@ -52,11 +65,14 @@ class AuthControllerTests {
 	@Test
 	void loginReturnsBearerTokenAndSafeUserResponse() throws Exception {
 		SmartLabUserPrincipal principal = principal("admin@example.test", "ROLE_ADMIN", "ROLE_MEMBER", "ROLE_ADMIN");
+		User user = new User();
+		user.setId(principal.userId());
 		when(authenticationManager.authenticate(any(Authentication.class)))
 				.thenReturn(UsernamePasswordAuthenticationToken.authenticated(
 						principal,
 						principal.getPassword(),
 						principal.getAuthorities()));
+		when(userRepository.findById(principal.userId())).thenReturn(Optional.of(user));
 		when(jwtTokenService.issueAccessToken(principal)).thenReturn(new IssuedAccessToken(
 				"Bearer",
 				"signed.jwt.value",
@@ -65,6 +81,8 @@ class AuthControllerTests {
 				OffsetDateTime.parse("2026-07-22T22:15:00+07:00")));
 
 		mockMvc.perform(post("/api/auth/login")
+						.header("X-Forwarded-For", "203.0.113.10, 198.51.100.20")
+						.header("User-Agent", "SmartLab test client")
 						.contentType(MediaType.APPLICATION_JSON)
 						.content("""
 								{"email":" Admin@Example.TEST ","password":"user-supplied-password"}
@@ -90,6 +108,15 @@ class AuthControllerTests {
 		verify(authenticationManager).authenticate(captor.capture());
 		assertEquals("Admin@Example.TEST", captor.getValue().getPrincipal());
 		assertEquals("user-supplied-password", captor.getValue().getCredentials());
+
+		ArgumentCaptor<LoginHistory> loginHistoryCaptor = ArgumentCaptor.forClass(LoginHistory.class);
+		verify(loginHistoryRepository).save(loginHistoryCaptor.capture());
+		LoginHistory loginHistory = loginHistoryCaptor.getValue();
+		assertEquals(user, loginHistory.getUser());
+		assertEquals(Boolean.TRUE, loginHistory.getSuccess());
+		assertEquals("203.0.113.10", loginHistory.getIpAddress());
+		assertEquals("SmartLab test client", loginHistory.getUserAgent());
+		assertNotNull(user.getLastLoginAt());
 	}
 
 	@Test
@@ -140,7 +167,13 @@ class AuthControllerTests {
 				.build();
 
 		com.smartlab.dto.response.auth.AuthenticatedUserResponse response =
-				new AuthController(authenticationManager, jwtTokenService, new AuthApiMapper()).me(jwt);
+				new AuthController(
+						authenticationManager,
+						jwtTokenService,
+						new AuthApiMapper(),
+						userRepository,
+						loginHistoryRepository)
+						.me(jwt);
 
 		org.junit.jupiter.api.Assertions.assertEquals(UUID.fromString(jwt.getSubject()), response.id());
 		org.junit.jupiter.api.Assertions.assertEquals(UUID.fromString(jwt.getClaimAsString("lab_id")), response.labId());

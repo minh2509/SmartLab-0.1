@@ -35,4 +35,8 @@ public interface UserRepository extends JpaRepository<User, UUID> {
 	List<User> findByLabAndAccountStatus(Lab lab, UserAccountStatus accountStatus);
 
 	List<User> findByLabAndAccountStatusNot(Lab lab, UserAccountStatus accountStatus);
+
+	org.springframework.data.domain.Page<User> findByLabAndDeletedAtIsNull(Lab lab, org.springframework.data.domain.Pageable pageable);
+
+	org.springframework.data.domain.Page<User> findByLabAndDeletedAtIsNullAndFullNameContainingIgnoreCase(Lab lab, String keyword, org.springframework.data.domain.Pageable pageable);
 }

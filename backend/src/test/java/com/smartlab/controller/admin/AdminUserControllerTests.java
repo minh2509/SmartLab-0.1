@@ -46,19 +46,24 @@ class AdminUserControllerTests {
 			.build();
 
 	@Test
-	void createUserAcceptsTemporaryPasswordRoleCodesAndReturnsActiveRolesWithoutCredentials() throws Exception {
+	void createUserAcceptsTemporaryPasswordAndReturnsOneTimeCredentialEnvelope() throws Exception {
 		UUID actorUserId = UUID.randomUUID();
 		UUID userId = UUID.randomUUID();
 		UUID labId = UUID.randomUUID();
 		when(actorResolver.requireActorUserId()).thenReturn(actorUserId);
 		when(adminUserService.createManagedUser(any(AdminUserService.CreateManagedUserCommand.class)))
-				.thenReturn(userSummary(
+				.thenReturn(new AdminUserService.ManagedUserSummary(
 						userId,
 						labId,
 						"minh",
 						"minh@example.edu",
+						"Minh Hoang",
+						null,
 						UserAccountStatus.ACTIVE,
-						List.of("MEMBER")));
+						null,
+						List.of("MEMBER"),
+						"TemporaryPass123!",
+						false));
 
 		mockMvc.perform(post("/api/admin/users")
 						.contentType(MediaType.APPLICATION_JSON)
@@ -74,13 +79,13 @@ class AdminUserControllerTests {
 								"""))
 				.andExpect(status().isCreated())
 				.andExpect(header().string("Location", "/api/admin/users/" + userId))
-				.andExpect(jsonPath("$.id").value(userId.toString()))
-				.andExpect(jsonPath("$.labId").value(labId.toString()))
-				.andExpect(jsonPath("$.email").value("minh@example.edu"))
-				.andExpect(jsonPath("$.roleCodes[0]").value("MEMBER"))
+				.andExpect(jsonPath("$.user.id").value(userId.toString()))
+				.andExpect(jsonPath("$.user.labId").value(labId.toString()))
+				.andExpect(jsonPath("$.user.email").value("minh@example.edu"))
+				.andExpect(jsonPath("$.user.roleCodes[0]").value("MEMBER"))
 				.andExpect(jsonPath("$.passwordHash").doesNotExist())
-				.andExpect(jsonPath("$.temporaryPassword").doesNotExist())
-				.andExpect(content().string(not(containsString("TemporaryPass123!"))));
+				.andExpect(jsonPath("$.temporaryPassword").value("TemporaryPass123!"))
+				.andExpect(jsonPath("$.generated").value(false));
 
 		ArgumentCaptor<AdminUserService.CreateManagedUserCommand> captor =
 				ArgumentCaptor.forClass(AdminUserService.CreateManagedUserCommand.class);
@@ -357,6 +362,9 @@ class AdminUserControllerTests {
 				"Full Name",
 				null,
 				status,
-				roleCodes);
+				null,
+				roleCodes,
+				null,
+				false);
 	}
 }
