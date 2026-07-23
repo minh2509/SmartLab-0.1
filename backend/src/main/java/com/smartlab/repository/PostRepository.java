@@ -125,4 +125,16 @@ public interface PostRepository extends JpaRepository<Post, UUID> {
 	List<Post> findPendingAdminPostsByIdIn(
 			@Param("labId") UUID labId,
 			@Param("ids") Collection<UUID> ids);
+
+	@EntityGraph(attributePaths = {"author", "project", "category", "coverFile"})
+	@Query("""
+			select post
+			from Post post
+			where post.id = :postId
+				and post.lab.id = :labId
+				and post.deletedAt is null
+			""")
+	Optional<Post> findAdminPostDetail(
+			@Param("labId") UUID labId,
+			@Param("postId") UUID postId);
 }

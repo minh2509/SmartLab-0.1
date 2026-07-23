@@ -138,6 +138,25 @@ class AdminApiSecurityTests {
 	}
 
 	@Test
+	void adminPostDetailUsesExistingAdminAuthorizationRules() throws Exception {
+		UUID postId = UUID.randomUUID();
+		mockMvc.perform(get("/api/admin/posts/{postId}", postId))
+				.andExpect(status().isUnauthorized());
+		mockMvc.perform(get("/api/admin/posts/{postId}", postId)
+						.header("Authorization", "Bearer " + loginToken("member@example.test")))
+				.andExpect(status().isForbidden());
+		mockMvc.perform(get("/api/admin/posts/{postId}", postId)
+						.header("Authorization", "Bearer " + loginToken("leader@example.test")))
+				.andExpect(status().isForbidden());
+		mockMvc.perform(get("/api/admin/posts/{postId}", postId)
+						.header("Authorization", "Bearer " + loginToken("admin@example.test")))
+				.andExpect(status().isOk());
+		mockMvc.perform(get("/api/admin/posts/{postId}", postId)
+						.header("Authorization", "Bearer " + loginToken("super@example.test")))
+				.andExpect(status().isOk());
+	}
+
+	@Test
 	void jwtNonAdminRolesReceiveJsonForbidden() throws Exception {
 		for (String username : java.util.List.of("leader@example.test", "member@example.test", "noroles@example.test")) {
 			mockMvc.perform(get("/api/admin/probe").header("Authorization", "Bearer " + loginToken(username)))
@@ -281,6 +300,11 @@ class AdminApiSecurityTests {
 		@GetMapping("/api/admin/posts/pending")
 		Map<String, String> pendingAdminPosts() {
 			return Map.of("ok", "admin-pending-posts");
+		}
+
+		@GetMapping("/api/admin/posts/{postId}")
+		Map<String, String> adminPostDetail() {
+			return Map.of("ok", "admin-post-detail");
 		}
 
 		@PostMapping("/api/admin/probe")
