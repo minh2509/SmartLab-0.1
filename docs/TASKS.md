@@ -101,16 +101,17 @@ SPRING_PROFILES_ACTIVE=nodb ./mvnw clean test
 
 - Name: List and search posts for administrators
 - Assignee: Minh
-- Status: `READY_FOR_REVIEW`
+- Status: `DONE`
 - Progress: 100%
 - Branch: `feature/minh-admin-post-query`
 - Endpoint: `GET /api/admin/posts`
-- Test result: 189 tests run, 0 failures, 0 errors; BUILD SUCCESS
+- Test result: 191 tests run, 0 failures, 0 errors; BUILD SUCCESS
 - Runtime result: PostgreSQL 18.4 contract verification passed
 - Notes: Implemented an ADMIN/SUPER_ADMIN-only, lab-scoped post listing API with pagination and optional keyword, status, content type, author, project, and visibility filters.
 - Notes: Soft-deleted posts are excluded; ordering is `createdAt DESC, id DESC`.
 - Notes: Fixed the nullable keyword PostgreSQL failure by normalizing a lowercase LIKE pattern in the service instead of applying `lower(...)` to a nullable query parameter.
 - Notes: Runtime fixture was removed successfully; remaining fixture labs, users, and posts are all zero.
+- Notes: PR #26 was merged into `main` with merge commit `b052b151ad5366bb42471ba3078bc34d2a105a1c`.
 
 ### Scope
 
@@ -126,7 +127,7 @@ SPRING_PROFILES_ACTIVE=nodb ./mvnw clean test
 ### Verification
 
 - Targeted ADM-055 tests: PASS
-- Full test suite: 189 passed, 0 failures
+- Full test suite: 191 passed, 0 failures
 - `./mvnw compile`: PASS
 - `git diff --check`: PASS
 - PostgreSQL runtime API assertions: PASS
