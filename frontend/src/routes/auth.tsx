@@ -168,20 +168,20 @@ function AuthPage() {
 
 function signInErrorTitle(error: unknown) {
   if (error instanceof ApiError && error.status === 401) {
-    return "Sai tài khoản hoặc mật khẩu.";
+    return "Invalid email or password.";
   }
   if (error instanceof ApiError && error.status === 0) {
-    return "Không kết nối được backend.";
+    return "Unable to connect to the backend.";
   }
-  return "Không thể đăng nhập.";
+  return "Unable to sign in.";
 }
 
 function signInErrorDescription(error: unknown) {
   if (error instanceof ApiError && error.status === 401) {
-    return "Kiểm tra lại email, mật khẩu rồi thử lại.";
+    return "Check your email and password, then try again.";
   }
   if (error instanceof ApiError && error.status === 0) {
-    return "Đảm bảo backend SmartLab đang chạy ở cổng 8080.";
+    return "Make sure the SmartLab backend is running on port 8080.";
   }
-  return error instanceof Error ? error.message : "Vui lòng thử lại sau.";
+  return error instanceof Error ? error.message : "Please try again later.";
 }

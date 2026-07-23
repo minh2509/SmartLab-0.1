@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { X } from "lucide-react";
+import { Wand2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   getLeaderRoleRemovalBlock,
@@ -14,6 +14,13 @@ import type { Project } from "@/lib/projects-data";
 
 const allRoles: Role[] = ["admin", "leader", "member"];
 const regularAdminRoles: Role[] = ["leader", "member"];
+const passwordChars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%";
+
+function generateTemporaryPassword() {
+  const values = new Uint32Array(14);
+  crypto.getRandomValues(values);
+  return Array.from(values, (value) => passwordChars[value % passwordChars.length]).join("");
+}
 
 function emptyDraft(actor: UserActor): UserDraft {
   return {
@@ -89,6 +96,11 @@ export function UserFormDialog({
     }));
   };
 
+  const generatePassword = () => {
+    setForm((current) => ({ ...current, temporaryPassword: generateTemporaryPassword() }));
+    setTouched((current) => ({ ...current, temporaryPassword: true }));
+  };
+
   const submit = (event: React.FormEvent) => {
     event.preventDefault();
     setTouched({ fullName: true, email: true, roles: true, temporaryPassword: true });
@@ -159,14 +171,25 @@ export function UserFormDialog({
               label="Temporary password"
               error={touched.temporaryPassword ? errors.temporaryPassword : undefined}
             >
-              <input
-                className="user-input"
-                type="password"
-                value={form.temporaryPassword ?? ""}
-                autoComplete="new-password"
-                onBlur={() => setTouched((current) => ({ ...current, temporaryPassword: true }))}
-                onChange={(event) => setForm({ ...form, temporaryPassword: event.target.value })}
-              />
+              <div className="flex gap-2">
+                <input
+                  className="user-input"
+                  type="text"
+                  value={form.temporaryPassword ?? ""}
+                  autoComplete="new-password"
+                  placeholder="Leave blank to let backend generate"
+                  onBlur={() => setTouched((current) => ({ ...current, temporaryPassword: true }))}
+                  onChange={(event) => setForm({ ...form, temporaryPassword: event.target.value })}
+                />
+                <button
+                  type="button"
+                  onClick={generatePassword}
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-hairline px-3 text-xs font-medium text-ink hover:bg-muted"
+                >
+                  <Wand2 className="h-3.5 w-3.5" />
+                  Generate
+                </button>
+              </div>
             </Field>
           ) : null}
 
@@ -285,8 +308,7 @@ function validate(
   if (form.roles.length === 0) errors.roles = "At least one role is required.";
   if (!editing) {
     const temporaryPassword = form.temporaryPassword?.trim() ?? "";
-    if (!temporaryPassword) errors.temporaryPassword = "Temporary password is required.";
-    else if (temporaryPassword.length < 12 || temporaryPassword.length > 72) {
+    if (temporaryPassword && (temporaryPassword.length < 12 || temporaryPassword.length > 72)) {
       errors.temporaryPassword = "Temporary password must be between 12 and 72 characters.";
     }
   }

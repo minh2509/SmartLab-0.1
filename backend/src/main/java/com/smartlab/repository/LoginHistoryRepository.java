@@ -17,6 +17,8 @@ public interface LoginHistoryRepository extends JpaRepository<LoginHistory, UUID
 
 	List<LoginHistory> findByUserOrderByLoginAtDesc(User user);
 
+	List<LoginHistory> findByUserInOrderByLoginAtDesc(List<User> users);
+
 	List<LoginHistory> findByLoginAtBetween(OffsetDateTime start, OffsetDateTime end);
 
 	List<LoginHistory> findByIpAddress(String ipAddress);

@@ -11,7 +11,7 @@ import jakarta.validation.constraints.Size;
 public record CreateAdminUserRequest(
 		@NotBlank @Size(max = 100) String username,
 		@NotBlank @Email @Size(max = 255) String email,
-		@NotBlank @Size(min = 12, max = 72) String temporaryPassword,
+		String temporaryPassword,
 		@NotBlank @Size(max = 255) String fullName,
 		UUID avatarFileId,
 		@NotEmpty List<@NotBlank @Size(max = 50) String> roleCodes) {

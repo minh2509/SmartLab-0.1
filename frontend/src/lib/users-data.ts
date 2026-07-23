@@ -20,6 +20,12 @@ export type UserAccount = {
   lastLoginAt?: string;
 };
 
+export type UserCredentialResult = {
+  user: UserAccount;
+  temporaryPassword?: string;
+  generated?: boolean;
+};
+
 export type UserDraft = {
   fullName: string;
   email: string;
@@ -221,6 +227,7 @@ function normalizeBackendAdminUser(value: unknown): UserAccount | null {
   const email = normalizeEmail(readString(value.email));
   const fullName = readString(value.fullName);
   const accountStatus = readString(value.accountStatus);
+  const lastLoginAt = readString(value.lastLoginAt);
   const roleCodes = readStringArray(value.roleCodes);
   const normalizedRoles = uniqueBackendRoles(roleCodes);
   if (!id || !labId || !email || !fullName || normalizedRoles.length === 0) return null;
@@ -237,12 +244,25 @@ function normalizeBackendAdminUser(value: unknown): UserAccount | null {
     isMainAdmin: roleCodes.includes("SUPER_ADMIN"),
     createdAt: seedCreatedAt,
     updatedAt: seedCreatedAt,
+    lastLoginAt: lastLoginAt || undefined,
   };
 }
 
 function normalizeBackendAdminUsers(value: unknown) {
   if (!Array.isArray(value)) return [];
   return value.map(normalizeBackendAdminUser).filter((user): user is UserAccount => !!user);
+}
+
+function normalizeBackendCredentialResult(value: unknown): UserCredentialResult | null {
+  if (!isRecord(value)) return null;
+  const user = normalizeBackendAdminUser(value.user);
+  if (!user) return null;
+  const temporaryPassword = readString(value.temporaryPassword);
+  return {
+    user,
+    temporaryPassword: temporaryPassword || undefined,
+    generated: readBoolean(value.generated),
+  };
 }
 
 function mergeWithSeed(list: UserAccount[]) {
@@ -504,6 +524,15 @@ export function unlockUser(actor: UserActor, userId: string): Result {
   return ok ? { ok: true, value: next } : { ok: false, error: "Account unlock failed." };
 }
 
+export function deleteUser(actor: UserActor, userId: string): Result {
+  const current = getUserById(userId);
+  if (!current) return { ok: false, error: "User not found." };
+  const permissionError = canManageUser(actor, current);
+  if (permissionError) return { ok: false, error: permissionError };
+  const ok = setUsers(getUsers().filter((user) => user.id !== userId));
+  return ok ? { ok: true, value: current } : { ok: false, error: "User delete failed." };
+}
+
 export function recordLogin(userId: string) {
   const current = getUserById(userId);
   if (!current) return false;
@@ -568,18 +597,18 @@ export function useUsers(accessToken?: string | null) {
       if (!accessToken) return createUser(actor, draft);
       const validated = validateDraftForSubmit(actor, null, draft);
       if (!validated.ok) return validated;
-      const temporaryPassword = draft.temporaryPassword?.trim() ?? "";
-      if (temporaryPassword.length < 12 || temporaryPassword.length > 72) {
+      const temporaryPassword = draft.temporaryPassword?.trim();
+      if (temporaryPassword && (temporaryPassword.length < 12 || temporaryPassword.length > 72)) {
         return { ok: false, error: "Temporary password must be between 12 and 72 characters." };
       }
       try {
-        const created = normalizeBackendAdminUser(
+        const created = normalizeBackendCredentialResult(
           await apiRequest("/api/admin/users", {
             token: accessToken,
             body: {
               username: usernameFromEmail(validated.value.email),
               email: validated.value.email,
-              temporaryPassword,
+              temporaryPassword: temporaryPassword || null,
               fullName: validated.value.fullName,
               avatarFileId: null,
               roleCodes: roleCodesForBackend(validated.value.roles),
@@ -587,19 +616,24 @@ export function useUsers(accessToken?: string | null) {
           }),
         );
         if (!created) return { ok: false, error: "User could not be loaded after creation." };
-        let saved = created;
+        let saved = created.user;
         if (validated.value.status === "locked") {
           const locked = normalizeBackendAdminUser(
-            await apiRequest(`/api/admin/users/${created.id}/status`, {
+            await apiRequest(`/api/admin/users/${created.user.id}/lock`, {
               token: accessToken,
               method: "PATCH",
-              body: { status: "LOCKED" },
             }),
           );
           if (locked) saved = locked;
         }
         await reload();
-        return { ok: true, value: saved };
+        const savedWithCredential = saved as UserAccount & {
+          temporaryPassword?: string;
+          generated?: boolean;
+        };
+        savedWithCredential.temporaryPassword = created.temporaryPassword;
+        savedWithCredential.generated = created.generated;
+        return { ok: true, value: savedWithCredential };
       } catch (error) {
         return {
           ok: false,
@@ -625,7 +659,7 @@ export function useUsers(accessToken?: string | null) {
         const updated = normalizeBackendAdminUser(
           await apiRequest(`/api/admin/users/${userId}`, {
             token: accessToken,
-            method: "PATCH",
+            method: "PUT",
             body: {
               username: usernameFromEmail(email),
               email,
@@ -686,10 +720,9 @@ export function useUsers(accessToken?: string | null) {
       if (permissionError) return { ok: false, error: permissionError };
       try {
         const updated = normalizeBackendAdminUser(
-          await apiRequest(`/api/admin/users/${userId}/status`, {
+          await apiRequest(`/api/admin/users/${userId}/lock`, {
             token: accessToken,
             method: "PATCH",
-            body: { status: "LOCKED" },
           }),
         );
         if (!updated) return { ok: false, error: "Account lock failed." };
@@ -713,10 +746,9 @@ export function useUsers(accessToken?: string | null) {
       if (permissionError) return { ok: false, error: permissionError };
       try {
         const updated = normalizeBackendAdminUser(
-          await apiRequest(`/api/admin/users/${userId}/status`, {
+          await apiRequest(`/api/admin/users/${userId}/unlock`, {
             token: accessToken,
             method: "PATCH",
-            body: { status: "ACTIVE" },
           }),
         );
         if (!updated) return { ok: false, error: "Account unlock failed." };
@@ -726,6 +758,29 @@ export function useUsers(accessToken?: string | null) {
         return {
           ok: false,
           error: error instanceof Error ? error.message : "Account unlock failed.",
+        };
+      }
+    },
+    [accessToken, reload, users],
+  );
+  const remove = useCallback(
+    async (actor: UserActor, userId: string): Promise<Result> => {
+      if (!accessToken) return deleteUser(actor, userId);
+      const current = users.find((user) => user.id === userId) ?? null;
+      if (!current) return { ok: false, error: "User not found." };
+      const permissionError = canManageUser(actor, current);
+      if (permissionError) return { ok: false, error: permissionError };
+      try {
+        await apiRequest(`/api/admin/users/${userId}`, {
+          token: accessToken,
+          method: "DELETE",
+        });
+        await reload();
+        return { ok: true, value: current };
+      } catch (error) {
+        return {
+          ok: false,
+          error: error instanceof Error ? error.message : "User delete failed.",
         };
       }
     },
@@ -742,6 +797,7 @@ export function useUsers(accessToken?: string | null) {
     updateRoles,
     lock,
     unlock,
+    remove,
     resetUsers,
   };
 }

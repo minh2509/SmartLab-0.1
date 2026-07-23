@@ -8,6 +8,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -53,6 +54,17 @@ public class AdminUserRoleController {
 	public AdminUserResponse replaceRoles(
 			@PathVariable UUID userId,
 			@Valid @RequestBody ReplaceUserRolesRequest request) {
+		return replaceRolesInternal(userId, request);
+	}
+
+	@PostMapping
+	public AdminUserResponse assignRoles(
+			@PathVariable UUID userId,
+			@Valid @RequestBody ReplaceUserRolesRequest request) {
+		return replaceRolesInternal(userId, request);
+	}
+
+	private AdminUserResponse replaceRolesInternal(UUID userId, ReplaceUserRolesRequest request) {
 		return mapper.toUserResponse(adminUserRoleService.replaceRolesForUser(
 				new AdminUserRoleService.ReplaceUserRolesCommand(
 						actorResolver.requireActorUserId(),
