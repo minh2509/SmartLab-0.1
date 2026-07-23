@@ -16,9 +16,13 @@ public interface ProjectRepository extends JpaRepository<Project, UUID> {
 
 	Optional<Project> findByLabAndSlug(Lab lab, String slug);
 
+	Optional<Project> findByIdAndLabAndDeletedAtIsNull(UUID id, Lab lab);
+
 	boolean existsByLabAndCode(Lab lab, String code);
 
 	boolean existsByLabAndSlug(Lab lab, String slug);
 
 	List<Project> findByLabAndStatus(Lab lab, ProjectStatus status);
+
+	List<Project> findByLabAndDeletedAtIsNullOrderByNameAscCodeAsc(Lab lab);
 }
