@@ -12,7 +12,10 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.lang.reflect.Method;
+import java.time.Clock;
+import java.time.Instant;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -42,6 +45,7 @@ import com.smartlab.enums.PostStatus;
 import com.smartlab.enums.PostVisibility;
 import com.smartlab.enums.UserAccountStatus;
 import com.smartlab.enums.UserRoleStatus;
+import com.smartlab.exception.ConflictingAdminOperationException;
 import com.smartlab.exception.ForbiddenAdminOperationException;
 import com.smartlab.exception.InvalidAdminServiceInputException;
 import com.smartlab.exception.ResourceNotFoundException;
@@ -52,6 +56,7 @@ import com.smartlab.repository.PostRepository;
 import com.smartlab.repository.RoleRepository;
 import com.smartlab.repository.UserRepository;
 import com.smartlab.repository.UserRoleRepository;
+import com.smartlab.service.common.PostWorkflowService;
 
 class AdminPostServiceTests {
 
@@ -62,12 +67,15 @@ class AdminPostServiceTests {
 	private final RoleRepository roleRepository = mock(RoleRepository.class);
 	private final UserRoleRepository userRoleRepository = mock(UserRoleRepository.class);
 	private final AdminRolePolicy rolePolicy = new AdminRolePolicy(userRepository, roleRepository, userRoleRepository);
+	private final Clock clock = Clock.fixed(Instant.parse("2026-07-23T08:15:30Z"), ZoneOffset.UTC);
 	private final AdminPostService service = new AdminPostService(
 			postRepository,
 			postAttachmentRepository,
 			postModerationLogRepository,
 			rolePolicy,
-			new AdminPostApiMapper());
+			new PostWorkflowService(),
+			new AdminPostApiMapper(),
+			clock);
 
 	@Test
 	void listPostsRejectsInvalidActorOrActorWithoutCurrentAdminRole() {
@@ -566,6 +574,190 @@ class AdminPostServiceTests {
 	}
 
 	@Test
+	void approvePostRejectsNullCommandActorAndPostId() {
+		assertThrows(
+				InvalidAdminServiceInputException.class,
+				() -> service.approvePost(null));
+		assertThrows(
+				InvalidAdminServiceInputException.class,
+				() -> service.approvePost(new AdminPostService.ApproveAdminPostCommand(
+						null,
+						UUID.randomUUID())));
+
+		Lab lab = lab(UUID.randomUUID());
+		User actor = user(UUID.randomUUID(), lab, UserAccountStatus.ACTIVE);
+		stubActiveActor(actor, role(UUID.randomUUID(), AdminRolePolicy.ADMIN_ROLE_CODE));
+		assertThrows(
+				InvalidAdminServiceInputException.class,
+				() -> service.approvePost(new AdminPostService.ApproveAdminPostCommand(
+						actor.getId(),
+						null)));
+	}
+
+	@Test
+	void approvePostRejectsActorsWithoutCurrentDatabaseAdminRole() {
+		Lab lab = lab(UUID.randomUUID());
+		User memberActor = user(UUID.randomUUID(), lab, UserAccountStatus.ACTIVE);
+		stubActiveActor(memberActor, role(UUID.randomUUID(), AdminRolePolicy.MEMBER_ROLE_CODE));
+		assertThrows(
+				ForbiddenAdminOperationException.class,
+				() -> service.approvePost(new AdminPostService.ApproveAdminPostCommand(
+						memberActor.getId(),
+						UUID.randomUUID())));
+
+		User leaderActor = user(UUID.randomUUID(), lab, UserAccountStatus.ACTIVE);
+		stubActiveActor(leaderActor, role(UUID.randomUUID(), AdminRolePolicy.LEADER_ROLE_CODE));
+		assertThrows(
+				ForbiddenAdminOperationException.class,
+				() -> service.approvePost(new AdminPostService.ApproveAdminPostCommand(
+						leaderActor.getId(),
+						UUID.randomUUID())));
+
+		User revokedActor = user(UUID.randomUUID(), lab, UserAccountStatus.ACTIVE);
+		when(userRepository.findById(revokedActor.getId())).thenReturn(Optional.of(revokedActor));
+		when(userRoleRepository.findByUserAndStatus(revokedActor, UserRoleStatus.ACTIVE)).thenReturn(List.of());
+		assertThrows(
+				ForbiddenAdminOperationException.class,
+				() -> service.approvePost(new AdminPostService.ApproveAdminPostCommand(
+						revokedActor.getId(),
+						UUID.randomUUID())));
+	}
+
+	@Test
+	void approvePostReturnsNotFoundAndDoesNotMutateWhenPostIsMissing() {
+		Lab lab = lab(UUID.randomUUID());
+		User actor = user(UUID.randomUUID(), lab, UserAccountStatus.ACTIVE);
+		stubActiveActor(actor, role(UUID.randomUUID(), AdminRolePolicy.ADMIN_ROLE_CODE));
+		UUID postId = UUID.randomUUID();
+		when(postRepository.findAdminPostForApproval(lab.getId(), postId)).thenReturn(Optional.empty());
+
+		assertThrows(
+				ResourceNotFoundException.class,
+				() -> service.approvePost(new AdminPostService.ApproveAdminPostCommand(
+						actor.getId(),
+						postId)));
+
+		verify(postModerationLogRepository, never()).save(any(PostModerationLog.class));
+		verify(postRepository, never()).save(any(Post.class));
+	}
+
+	@Test
+	void approvePostApprovesPendingPostWithExactMutationLogAndResponseForAdmin() {
+		Lab lab = lab(UUID.randomUUID());
+		User actor = user(UUID.randomUUID(), lab, UserAccountStatus.ACTIVE);
+		stubActiveActor(actor, role(UUID.randomUUID(), AdminRolePolicy.ADMIN_ROLE_CODE));
+		Post post = post(lab);
+		post.setModerationStatus(PostStatus.PENDING_REVIEW);
+		post.setReviewNote("stale note");
+		when(postRepository.findAdminPostForApproval(lab.getId(), post.getId())).thenReturn(Optional.of(post));
+
+		var response = service.approvePost(new AdminPostService.ApproveAdminPostCommand(
+				actor.getId(),
+				post.getId()));
+
+		ArgumentCaptor<PostModerationLog> logCaptor = ArgumentCaptor.forClass(PostModerationLog.class);
+		verify(postModerationLogRepository).save(logCaptor.capture());
+		verify(postRepository, never()).save(any(Post.class));
+		PostModerationLog log = logCaptor.getValue();
+		OffsetDateTime expectedReviewedAt = OffsetDateTime.parse("2026-07-23T08:15:30Z");
+		assertEquals(PostStatus.APPROVED, post.getModerationStatus());
+		assertEquals(actor, post.getReviewedBy());
+		assertEquals(expectedReviewedAt, post.getReviewedAt());
+		assertNull(post.getReviewNote());
+		assertEquals(post, log.getPost());
+		assertEquals(PostModerationAction.APPROVE, log.getAction());
+		assertEquals(PostStatus.PENDING_REVIEW, log.getFromStatus());
+		assertEquals(PostStatus.APPROVED, log.getToStatus());
+		assertEquals(actor, log.getActor());
+		assertNull(log.getReason());
+		assertEquals(post.getId(), response.postId());
+		assertEquals(PostModerationAction.APPROVE, response.action());
+		assertEquals(PostStatus.PENDING_REVIEW, response.fromStatus());
+		assertEquals(PostStatus.APPROVED, response.toStatus());
+		assertEquals(PostStatus.APPROVED, response.moderationStatus());
+		assertEquals(actor.getId(), response.reviewedById());
+		assertEquals(actor.getFullName(), response.reviewedByName());
+		assertEquals(expectedReviewedAt, response.reviewedAt());
+	}
+
+	@Test
+	void approvePostAcceptsSuperAdmin() {
+		Lab lab = lab(UUID.randomUUID());
+		User actor = user(UUID.randomUUID(), lab, UserAccountStatus.ACTIVE);
+		stubActiveActor(actor, role(UUID.randomUUID(), AdminRolePolicy.SUPER_ADMIN_ROLE_CODE));
+		Post post = post(lab);
+		post.setModerationStatus(PostStatus.PENDING_REVIEW);
+		when(postRepository.findAdminPostForApproval(lab.getId(), post.getId())).thenReturn(Optional.of(post));
+
+		var response = service.approvePost(new AdminPostService.ApproveAdminPostCommand(
+				actor.getId(),
+				post.getId()));
+
+		assertEquals(PostStatus.APPROVED, response.moderationStatus());
+		verify(postModerationLogRepository).save(any(PostModerationLog.class));
+	}
+
+	@Test
+	void approvePostRejectsEveryInvalidSourceStatusWithoutMutationOrLog() {
+		for (PostStatus status : List.of(
+				PostStatus.DRAFT,
+				PostStatus.NEEDS_REVISION,
+				PostStatus.APPROVED,
+				PostStatus.PUBLISHED,
+				PostStatus.REJECTED)) {
+			org.mockito.Mockito.clearInvocations(
+					postRepository,
+					postModerationLogRepository,
+					userRepository,
+					roleRepository,
+					userRoleRepository);
+			Lab lab = lab(UUID.randomUUID());
+			User actor = user(UUID.randomUUID(), lab, UserAccountStatus.ACTIVE);
+			stubActiveActor(actor, role(UUID.randomUUID(), AdminRolePolicy.ADMIN_ROLE_CODE));
+			Post post = post(lab);
+			post.setModerationStatus(status);
+			post.setReviewedBy(null);
+			post.setReviewedAt(null);
+			post.setReviewNote("keep me");
+			when(postRepository.findAdminPostForApproval(lab.getId(), post.getId())).thenReturn(Optional.of(post));
+
+			assertThrows(
+					ConflictingAdminOperationException.class,
+					() -> service.approvePost(new AdminPostService.ApproveAdminPostCommand(
+							actor.getId(),
+							post.getId())));
+
+			assertEquals(status, post.getModerationStatus());
+			assertNull(post.getReviewedBy());
+			assertNull(post.getReviewedAt());
+			assertEquals("keep me", post.getReviewNote());
+			verify(postModerationLogRepository, never()).save(any(PostModerationLog.class));
+			verify(postRepository, never()).save(any(Post.class));
+		}
+	}
+
+	@Test
+	void approvePostPropagatesModerationLogSaveFailureForTransactionalRollback() {
+		Lab lab = lab(UUID.randomUUID());
+		User actor = user(UUID.randomUUID(), lab, UserAccountStatus.ACTIVE);
+		stubActiveActor(actor, role(UUID.randomUUID(), AdminRolePolicy.ADMIN_ROLE_CODE));
+		Post post = post(lab);
+		post.setModerationStatus(PostStatus.PENDING_REVIEW);
+		RuntimeException failure = new RuntimeException("log insert failed");
+		when(postRepository.findAdminPostForApproval(lab.getId(), post.getId())).thenReturn(Optional.of(post));
+		when(postModerationLogRepository.save(any(PostModerationLog.class))).thenThrow(failure);
+
+		RuntimeException exception = assertThrows(
+				RuntimeException.class,
+				() -> service.approvePost(new AdminPostService.ApproveAdminPostCommand(
+						actor.getId(),
+						post.getId())));
+
+		assertEquals(failure, exception);
+		verify(postRepository, never()).save(any(Post.class));
+	}
+
+	@Test
 	void mapperHandlesNullOptionalRelationsAndPublishedAt() {
 		Post post = new Post();
 		post.setId(UUID.randomUUID());
@@ -604,6 +796,9 @@ class AdminPostServiceTests {
 		assertReadOnlyTransaction(AdminPostService.class.getMethod(
 				"getPostDetail",
 				AdminPostService.GetAdminPostDetailQuery.class));
+		assertMutationTransaction(AdminPostService.class.getMethod(
+				"approvePost",
+				AdminPostService.ApproveAdminPostCommand.class));
 	}
 
 	private void stubActiveActor(User actor, Role role) {
@@ -656,6 +851,12 @@ class AdminPostServiceTests {
 		Transactional transactional = method.getAnnotation(Transactional.class);
 		assertNotNull(transactional);
 		assertEquals(true, transactional.readOnly());
+	}
+
+	private static void assertMutationTransaction(Method method) {
+		Transactional transactional = method.getAnnotation(Transactional.class);
+		assertNotNull(transactional);
+		assertEquals(false, transactional.readOnly());
 	}
 
 	private static Lab lab(UUID id) {
