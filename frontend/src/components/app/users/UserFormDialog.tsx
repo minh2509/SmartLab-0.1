@@ -22,6 +22,7 @@ function emptyDraft(actor: UserActor): UserDraft {
     title: "",
     roles: actor.isMainAdmin ? ["member"] : ["member"],
     status: "active",
+    temporaryPassword: "",
   };
 }
 
@@ -33,6 +34,7 @@ function toDraft(user: UserAccount | null, actor: UserActor): UserDraft {
     title: user.title,
     roles: user.roles,
     status: user.status,
+    temporaryPassword: "",
   };
 }
 
@@ -89,7 +91,7 @@ export function UserFormDialog({
 
   const submit = (event: React.FormEvent) => {
     event.preventDefault();
-    setTouched({ fullName: true, email: true, roles: true });
+    setTouched({ fullName: true, email: true, roles: true, temporaryPassword: true });
     if (!valid || saving) return;
     onSave({
       fullName: form.fullName.trim(),
@@ -97,6 +99,7 @@ export function UserFormDialog({
       title: form.title.trim(),
       roles: Array.from(new Set(form.roles)),
       status: form.status,
+      temporaryPassword: form.temporaryPassword?.trim(),
     });
   };
 
@@ -131,11 +134,6 @@ export function UserFormDialog({
         </header>
 
         <div className="grid gap-4 p-5">
-          <div className="rounded-lg border border-hairline bg-muted/30 p-3 text-xs leading-relaxed text-ink-soft">
-            This user-management screen currently stores demo feature data locally. Creating a user
-            here does not provision backend authentication credentials yet.
-          </div>
-
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Full name" error={touched.fullName ? errors.fullName : undefined}>
               <input
@@ -155,6 +153,22 @@ export function UserFormDialog({
               />
             </Field>
           </div>
+
+          {mode === "create" ? (
+            <Field
+              label="Temporary password"
+              error={touched.temporaryPassword ? errors.temporaryPassword : undefined}
+            >
+              <input
+                className="user-input"
+                type="password"
+                value={form.temporaryPassword ?? ""}
+                autoComplete="new-password"
+                onBlur={() => setTouched((current) => ({ ...current, temporaryPassword: true }))}
+                onChange={(event) => setForm({ ...form, temporaryPassword: event.target.value })}
+              />
+            </Field>
+          ) : null}
 
           <Field label="Title">
             <input
@@ -269,6 +283,13 @@ function validate(
     errors.email = "Email already exists.";
   }
   if (form.roles.length === 0) errors.roles = "At least one role is required.";
+  if (!editing) {
+    const temporaryPassword = form.temporaryPassword?.trim() ?? "";
+    if (!temporaryPassword) errors.temporaryPassword = "Temporary password is required.";
+    else if (temporaryPassword.length < 12 || temporaryPassword.length > 72) {
+      errors.temporaryPassword = "Temporary password must be between 12 and 72 characters.";
+    }
+  }
   if (!actor.isMainAdmin && form.roles.includes("admin")) {
     errors.policy = "Regular Admins cannot assign the Admin role.";
   }

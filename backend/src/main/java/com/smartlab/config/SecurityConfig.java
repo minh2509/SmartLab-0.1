@@ -24,6 +24,13 @@ import com.smartlab.security.SecurityAuthorities;
 @Configuration
 public class SecurityConfig {
 
+	private static final String[] SWAGGER_ENDPOINTS = {
+			"/swagger-ui.html",
+			"/swagger-ui/**",
+			"/v3/api-docs",
+			"/v3/api-docs/**"
+	};
+
 	@Bean
 	public PasswordEncoder passwordEncoder() {
 		return new BCryptPasswordEncoder();
@@ -61,8 +68,13 @@ public class SecurityConfig {
 						.jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter)))
 				.authorizeHttpRequests(authorize -> authorize
 						.requestMatchers(HttpMethod.GET, "/actuator/health", "/actuator/health/**").permitAll()
+						.requestMatchers(HttpMethod.GET, SWAGGER_ENDPOINTS).permitAll()
+						.requestMatchers(HttpMethod.POST, "/api/auth/login").permitAll()
 						.requestMatchers("/api/admin/**")
-						.hasAuthority(SecurityAuthorities.permission(SecurityAuthorities.ADMIN_ACCESS))
+						.hasAnyAuthority(
+								SecurityAuthorities.permission(SecurityAuthorities.ADMIN_ACCESS),
+								SecurityAuthorities.role("ADMIN"),
+								SecurityAuthorities.role("SUPER_ADMIN"))
 						.requestMatchers("/api/**").authenticated()
 						.anyRequest().denyAll())
 				.build();
@@ -85,6 +97,7 @@ public class SecurityConfig {
 		return configureRestSecurity(http, authenticationEntryPoint, accessDeniedHandler)
 				.authorizeHttpRequests(authorize -> authorize
 						.requestMatchers(HttpMethod.GET, "/actuator/health", "/actuator/health/**").permitAll()
+						.requestMatchers(HttpMethod.GET, SWAGGER_ENDPOINTS).permitAll()
 						.requestMatchers("/api/**").denyAll()
 						.anyRequest().denyAll())
 				.build();

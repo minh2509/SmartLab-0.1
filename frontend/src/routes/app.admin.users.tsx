@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { Lock, Pencil, Plus, Search, Unlock, Users } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 import { AccountStatusDialog } from "@/components/app/users/AccountStatusDialog";
 import { UserFormDialog } from "@/components/app/users/UserFormDialog";
 import { EmptyState, PageHeader, Panel, StatusPill } from "@/components/app/ui";
@@ -29,9 +30,10 @@ type RoleFilter = "all" | Role;
 type StatusFilter = "all" | AccountStatus;
 
 function AdminUsersPage() {
-  const { user, activeRole } = useAuth();
+  const { user, activeRole, accessToken } = useAuth();
   const { projects } = useProjects();
-  const { users, create, update, updateRoles, lock, unlock } = useUsers();
+  const { users, loading, loadError, create, update, updateRoles, lock, unlock } =
+    useUsers(accessToken);
   const [query, setQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState<RoleFilter>("all");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
@@ -42,7 +44,10 @@ function AdminUsersPage() {
   const [saving, setSaving] = useState(false);
   const [statusPending, setStatusPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (loadError) toast.error(loadError);
+  }, [loadError]);
 
   const filtered = useMemo(
     () =>
@@ -87,14 +92,13 @@ function AdminUsersPage() {
   const activeCount = users.filter((account) => account.status === "active").length;
   const adminCount = users.filter((account) => account.roles.includes("admin")).length;
 
-  const saveUser = (draft: UserDraft) => {
+  const saveUser = async (draft: UserDraft) => {
     if (saving) return;
     setSaving(true);
     setError(null);
-    setSuccess(null);
     const result = editing
-      ? (() => {
-          const roleResult = updateRoles(actor, editing.id, draft.roles, projects);
+      ? await (async () => {
+          const roleResult = await updateRoles(actor, editing.id, draft.roles, projects);
           return roleResult.ok
             ? update(actor, editing.id, {
                 fullName: draft.fullName,
@@ -103,31 +107,34 @@ function AdminUsersPage() {
               })
             : roleResult;
         })()
-      : create(actor, draft);
+      : await create(actor, draft);
     setSaving(false);
     if (!result.ok) {
       setError(result.error);
+      toast.error(result.error);
       return;
     }
     setCreating(false);
     setEditing(null);
-    setSuccess(editing ? "User account updated." : "User account created.");
+    toast.success(editing ? "User account updated." : "User account created.");
   };
 
-  const runStatusAction = () => {
+  const runStatusAction = async () => {
     if (!statusTarget || statusPending) return;
     setStatusPending(true);
     setError(null);
-    setSuccess(null);
     const result =
-      statusAction === "lock" ? lock(actor, statusTarget.id) : unlock(actor, statusTarget.id);
+      statusAction === "lock"
+        ? await lock(actor, statusTarget.id)
+        : await unlock(actor, statusTarget.id);
     setStatusPending(false);
     if (!result.ok) {
       setError(result.error);
+      toast.error(result.error);
       return;
     }
     if (statusAction === "lock") clearSessionIfUser(statusTarget.id);
-    setSuccess(statusAction === "lock" ? "Account locked." : "Account unlocked.");
+    toast.success(statusAction === "lock" ? "Account locked." : "Account unlocked.");
     setStatusTarget(null);
   };
 
@@ -136,14 +143,13 @@ function AdminUsersPage() {
       <PageHeader
         eyebrow={user.isMainAdmin ? "Main Admin" : "Admin"}
         title="User management"
-        description="Manage frontend-demo lab accounts, role assignments, and account lock status."
+        description="Manage backend lab accounts, role assignments, and account status."
         action={
           <button
             onClick={() => {
               setCreating(true);
               setEditing(null);
               setError(null);
-              setSuccess(null);
             }}
             className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90"
           >
@@ -151,17 +157,6 @@ function AdminUsersPage() {
           </button>
         }
       />
-
-      {error ? (
-        <div className="mb-4 rounded-md border border-[color:var(--destructive)]/40 bg-[color-mix(in_oklab,var(--destructive)_10%,transparent)] px-3 py-2 text-xs text-[color:var(--destructive)]">
-          {error}
-        </div>
-      ) : null}
-      {success ? (
-        <div className="mb-4 rounded-md border border-[color-mix(in_oklab,var(--emerald-ink)_35%,transparent)] bg-[color-mix(in_oklab,var(--emerald-ink)_10%,transparent)] px-3 py-2 text-xs text-[color:var(--emerald-ink)]">
-          {success}
-        </div>
-      ) : null}
 
       <div className="mb-6 grid gap-4 sm:grid-cols-3">
         <MiniStat label="Total users" value={users.length} />
@@ -171,7 +166,9 @@ function AdminUsersPage() {
 
       <Panel
         title="Accounts"
-        description={`${filtered.length} shown`}
+        description={
+          loading ? "Loading from database..." : `${filtered.length} shown from database`
+        }
         action={
           <div className="flex flex-wrap items-center gap-2">
             <div className="relative">
@@ -206,7 +203,9 @@ function AdminUsersPage() {
         }
         className="overflow-hidden"
       >
-        {filtered.length === 0 ? (
+        {loading ? (
+          <EmptyState title="Loading users" hint="Fetching accounts from the backend database." />
+        ) : filtered.length === 0 ? (
           <EmptyState
             title={users.length === 0 ? "No users" : "No users match these filters"}
             hint="Try a different search, role, or account-status filter."

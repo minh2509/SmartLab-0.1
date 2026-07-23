@@ -2,6 +2,7 @@ package com.smartlab.security;
 
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.httpBasic;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -85,6 +86,24 @@ class AdminApiSecurityTests {
 		mockMvc.perform(get("/actuator/health"))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.status").value("UP"));
+	}
+
+	@Test
+	void swaggerEndpointsArePublic() throws Exception {
+		assertNotSecured(mockMvc.perform(get("/swagger-ui/index.html")).andReturn());
+		assertNotSecured(mockMvc.perform(get("/v3/api-docs")).andReturn());
+	}
+
+	@Test
+	void loginEndpointIsPublicAndReturnsCredentialFailureMessage() throws Exception {
+		mockMvc.perform(post("/api/auth/login")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{"email":"admin@example.test","password":"wrong-password"}
+								"""))
+				.andExpect(status().isUnauthorized())
+				.andExpect(jsonPath("$.message").value("Invalid email or password."))
+				.andExpect(jsonPath("$.path").value("/api/auth/login"));
 	}
 
 	@Test
@@ -218,6 +237,12 @@ class AdminApiSecurityTests {
 		int start = content.indexOf(marker) + marker.length();
 		int end = content.indexOf('"', start);
 		return content.substring(start, end);
+	}
+
+	private static void assertNotSecured(MvcResult result) {
+		int status = result.getResponse().getStatus();
+		assertNotEquals(401, status);
+		assertNotEquals(403, status);
 	}
 
 	private String expiredToken() {
