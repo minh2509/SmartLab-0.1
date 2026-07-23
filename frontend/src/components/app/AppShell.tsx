@@ -25,6 +25,7 @@ type AppNavPath =
   | "/app/evaluations"
   | "/app/calendar"
   | "/app/posts"
+  | "/app/admin/lab-announcements"
   | "/app/moderation/posts"
   | "/app/admin/users"
   | "/app/notifications";
@@ -83,6 +84,12 @@ const NAV: NavItem[] = [
     label: "Moderation",
     to: "/app/moderation/posts",
     icon: ShieldCheck,
+    roles: ["admin"],
+  },
+  {
+    label: "Lab announcements",
+    to: "/app/admin/lab-announcements",
+    icon: Megaphone,
     roles: ["admin"],
   },
   {
@@ -344,3 +351,4 @@ function RoleSwitcher({
     </div>
   );
 }
+import { Megaphone } from "lucide-react";

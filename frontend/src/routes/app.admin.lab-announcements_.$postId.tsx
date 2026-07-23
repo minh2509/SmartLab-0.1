@@ -1,58 +1,56 @@
-import { useEffect, useRef, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { ShieldCheck } from "lucide-react";
 import { EmptyState, PageHeader, Panel, StatusPill } from "@/components/app/ui";
 import {
   ADMIN_POST_EMPTY_SUMMARY,
-  adminPostErrorMessage,
   adminPostStatusTone,
-  approveAdminPost,
   contentTypeLabel,
-  formatAdminPostDate,
+  formatAdminPostDateTime,
   moderationStatusLabel,
   type AdminPostAttachment,
   type AdminPostDetail,
   type AdminPostFile,
   type AdminPostModerationHistory,
-  useAdminPostDetail,
+  useAdminLabAnnouncementDetail,
   visibilityLabel,
 } from "@/lib/admin-posts-api";
 import { useAuth } from "@/lib/auth";
 
-export const Route = createFileRoute("/app/moderation/posts_/$postId")({
+export const Route = createFileRoute("/app/admin/lab-announcements_/$postId")({
   head: () => ({
-    meta: [{ title: "Review Post — Smartworkspace" }, { name: "robots", content: "noindex" }],
+    meta: [
+      { title: "Lab Announcement Detail — Smartworkspace" },
+      { name: "robots", content: "noindex" },
+    ],
   }),
-  component: PostModerationDetailPage,
+  component: LabAnnouncementDetailPage,
 });
 
 const emptyContent = "No full content provided by the backend.";
 
-function PostModerationDetailPage() {
+function LabAnnouncementDetailPage() {
   const { postId } = Route.useParams();
-  const { user, activeRole, accessToken } = useAuth();
-  const [approving, setApproving] = useState(false);
-  const [actionError, setActionError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
-  const mountedRef = useRef(false);
-  const isAdmin = activeRole === "admin";
-  const detailEnabled = Boolean(user && isAdmin && accessToken && postId);
-  const detailRequest = useAdminPostDetail(accessToken, postId, detailEnabled);
+  const { user, activeRole, accessToken, ready } = useAuth();
+  const isAdmin = activeRole === "admin" && Boolean(user?.roles.includes("admin"));
+  const detailRequest = useAdminLabAnnouncementDetail(
+    accessToken,
+    postId,
+    Boolean(user && isAdmin && accessToken && postId),
+  );
   const detail = detailRequest.data;
 
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
-
-  if (!user) return null;
+  if (!ready || !user) return null;
 
   if (!isAdmin) {
     return (
       <div className="mx-auto max-w-lg rounded-xl border border-hairline bg-surface-elev p-8 text-center">
-        <h1 className="text-sm font-semibold text-ink">Unauthorized moderation</h1>
-        <p className="mt-1 text-xs text-ink-soft">Only Admin users can moderate posts.</p>
+        <div className="mx-auto grid h-10 w-10 place-items-center rounded-full bg-muted">
+          <ShieldCheck className="h-4 w-4 text-ink-soft" />
+        </div>
+        <h1 className="mt-4 text-sm font-semibold text-ink">Unauthorized announcements</h1>
+        <p className="mt-1 text-xs text-ink-soft">
+          Only Admin users can view lab announcement administration.
+        </p>
         <Link to="/app/dashboard" className="mt-4 inline-flex text-sm text-ink hover:opacity-70">
           Back to dashboard
         </Link>
@@ -60,77 +58,50 @@ function PostModerationDetailPage() {
     );
   }
 
-  const approvePost = async () => {
-    if (!detail || !accessToken || approving || detail.moderationStatus !== "PENDING_REVIEW")
-      return;
-    setApproving(true);
-    setActionError(null);
-    setSuccess(null);
-    try {
-      await approveAdminPost(accessToken, detail.id);
-      if (!mountedRef.current) return;
-      setSuccess("Post approved. The latest backend detail is being reloaded.");
-      detailRequest.retry();
-    } catch (error: unknown) {
-      if (!mountedRef.current) return;
-      setActionError(adminPostErrorMessage(error, "Post approval could not be completed."));
-    } finally {
-      if (mountedRef.current) setApproving(false);
-    }
-  };
-
   return (
     <>
       <Link
-        to="/app/moderation/posts"
+        to="/app/admin/lab-announcements"
         className="mb-4 inline-flex text-xs text-ink-soft hover:text-ink"
       >
-        Back to moderation
+        Back to lab announcements
       </Link>
 
       {detailRequest.loading ? (
-        <Panel title="Loading post detail">
-          <EmptyState title="Loading post detail" hint="Reading the backend review record..." />
+        <Panel title="Loading lab announcement">
+          <EmptyState
+            title="Loading lab announcement"
+            hint="Reading the backend announcement record..."
+          />
         </Panel>
       ) : detailRequest.error ? (
-        <Panel title="Post detail could not be loaded">
+        <Panel title="Lab announcement could not be loaded">
           <div className="space-y-4">
-            <EmptyState title="Post detail unavailable" hint={detailRequest.error} />
+            <EmptyState title="Lab announcement unavailable" hint={detailRequest.error} />
             <div className="flex flex-wrap justify-center gap-2">
               <button
                 type="button"
-                onClick={() => {
-                  setActionError(null);
-                  setSuccess(null);
-                  detailRequest.retry();
-                }}
+                onClick={detailRequest.retry}
                 className="rounded-md border border-hairline px-3 py-1.5 text-xs text-ink hover:bg-muted"
               >
                 Retry
               </button>
               <Link
-                to="/app/moderation/posts"
+                to="/app/admin/lab-announcements"
                 className="rounded-md border border-hairline px-3 py-1.5 text-xs text-ink hover:bg-muted"
               >
-                Back to moderation
+                Back to lab announcements
               </Link>
             </div>
           </div>
         </Panel>
       ) : detail ? (
-        <PostDetailContent
-          detail={detail}
-          approving={approving}
-          actionError={actionError}
-          success={success}
-          onApprove={approvePost}
-          canApprove={detail.moderationStatus === "PENDING_REVIEW" && Boolean(accessToken)}
-        />
+        <LabAnnouncementDetailContent detail={detail} />
       ) : (
-        <Panel title="Post detail unavailable">
+        <Panel title="Lab announcement unavailable">
           <EmptyState
-            title="Post detail unavailable"
-            hint="The backend did not return post detail."
+            title="Lab announcement unavailable"
+            hint="The backend did not return announcement detail."
           />
         </Panel>
       )}
@@ -138,25 +109,11 @@ function PostModerationDetailPage() {
   );
 }
 
-function PostDetailContent({
-  detail,
-  approving,
-  actionError,
-  success,
-  onApprove,
-  canApprove,
-}: {
-  detail: AdminPostDetail;
-  approving: boolean;
-  actionError: string | null;
-  success: string | null;
-  onApprove: () => void;
-  canApprove: boolean;
-}) {
+function LabAnnouncementDetailContent({ detail }: { detail: AdminPostDetail }) {
   return (
     <>
       <PageHeader
-        eyebrow="Admin moderation"
+        eyebrow="Admin content"
         title={detail.title}
         description={detail.summary?.trim() || ADMIN_POST_EMPTY_SUMMARY}
         action={
@@ -166,31 +123,17 @@ function PostDetailContent({
         }
       />
 
-      {actionError ? (
-        <div className="mb-4 rounded-md border border-[color:var(--destructive)]/40 bg-[color-mix(in_oklab,var(--destructive)_10%,transparent)] px-3 py-2 text-xs text-[color:var(--destructive)]">
-          {actionError}
-        </div>
-      ) : null}
-      {success ? (
-        <div className="mb-4 rounded-md border border-[color-mix(in_oklab,var(--emerald-ink)_35%,transparent)] bg-[color-mix(in_oklab,var(--emerald-ink)_10%,transparent)] px-3 py-2 text-xs text-[color:var(--emerald-ink)]">
-          {success}
-        </div>
-      ) : null}
-
       <div className="grid gap-4 lg:grid-cols-[1fr_340px]">
         <div className="space-y-4">
           <Panel
-            title="Post content"
-            description={`${contentTypeLabel(detail.contentType)} content`}
+            title="Announcement content"
+            description={`${contentTypeLabel(detail.contentType)} · ${visibilityLabel(detail.visibility)}`}
           >
             <article>
               <div className="flex flex-wrap items-center gap-2">
                 <StatusPill tone={adminPostStatusTone(detail.moderationStatus)}>
                   {moderationStatusLabel(detail.moderationStatus)}
                 </StatusPill>
-                <span className="text-xs text-ink-soft">
-                  {contentTypeLabel(detail.contentType)}
-                </span>
                 <span className="text-xs text-ink-soft">{visibilityLabel(detail.visibility)}</span>
               </div>
               <h2 className="mt-4 font-display text-3xl leading-tight text-ink">{detail.title}</h2>
@@ -207,10 +150,7 @@ function PostDetailContent({
             </article>
           </Panel>
 
-          <Panel
-            title="Attachments"
-            description={`${detail.attachments.length} file attachment(s)`}
-          >
+          <Panel title="Attachments" description={`${detail.attachments.length} attachment(s)`}>
             {detail.attachments.length === 0 ? (
               <EmptyState title="No attachments" hint="The backend returned no attachments." />
             ) : (
@@ -242,24 +182,15 @@ function PostDetailContent({
         </div>
 
         <aside className="space-y-4">
-          <Panel title="Review actions">
+          <Panel title="Announcement actions">
             <div className="space-y-2">
-              <button
-                type="button"
-                disabled={!canApprove || approving}
-                onClick={onApprove}
-                className="w-full rounded-md bg-primary px-3.5 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                {approving ? "Approving..." : "Approve"}
-              </button>
-              <UnavailableAction label="Request revision" />
-              <UnavailableAction label="Reject" />
+              <UnavailableAction label="Edit" />
               <UnavailableAction label="Publish" />
               <UnavailableAction label="Delete" destructive />
             </div>
             <p className="mt-3 text-xs leading-relaxed text-ink-soft">
-              Only approval is connected in this checkpoint. Other moderation endpoints are not
-              implemented yet.
+              Lab announcement mutation endpoints are unavailable until their backend dependencies
+              are merged.
             </p>
           </Panel>
 
@@ -267,17 +198,16 @@ function PostDetailContent({
             <dl className="space-y-2 text-sm">
               <Meta label="Author" value={detail.author?.fullName ?? "Unknown author"} />
               <Meta label="Slug" value={detail.slug} mono />
-              <Meta label="Content type" value={contentTypeLabel(detail.contentType)} />
               <Meta label="Visibility" value={visibilityLabel(detail.visibility)} />
               <Meta label="Status" value={moderationStatusLabel(detail.moderationStatus)} />
               {detail.project ? <Meta label="Project" value={detail.project.name} /> : null}
               {detail.category ? <Meta label="Category" value={detail.category.name} /> : null}
-              <Meta label="Created" value={formatAdminPostDate(detail.createdAt)} />
-              <Meta label="Updated" value={formatAdminPostDate(detail.updatedAt)} />
+              <Meta label="Created" value={formatAdminPostDateTime(detail.createdAt)} />
+              <Meta label="Updated" value={formatAdminPostDateTime(detail.updatedAt)} />
               <Meta
                 label="Published"
                 value={
-                  detail.publishedAt ? formatAdminPostDate(detail.publishedAt) : "Not published"
+                  detail.publishedAt ? formatAdminPostDateTime(detail.publishedAt) : "Not published"
                 }
               />
             </dl>
@@ -304,7 +234,7 @@ function AttachmentRow({ attachment }: { attachment: AdminPostAttachment }) {
         <span>{attachment.mimeType ?? "Unknown MIME type"}</span>
         <span>{formatFileSize(attachment.fileSize)}</span>
         <span>{attachment.uploadedByName ?? "Unknown uploader"}</span>
-        <span>{formatAdminPostDate(attachment.createdAt)}</span>
+        <span>{formatAdminPostDateTime(attachment.createdAt)}</span>
       </div>
     </article>
   );
@@ -318,7 +248,7 @@ function HistoryRow({ entry }: { entry: AdminPostModerationHistory }) {
         <span className="text-xs text-ink-soft">{formatTransition(entry)}</span>
       </div>
       <div className="mt-2 text-xs text-ink-soft">
-        {entry.actorName ?? "Unknown actor"} · {formatAdminPostDate(entry.createdAt)}
+        {entry.actorName ?? "Unknown actor"} · {formatAdminPostDateTime(entry.createdAt)}
       </div>
       {entry.reason?.trim() ? (
         <p className="mt-2 text-sm leading-relaxed text-ink">{entry.reason}</p>
@@ -334,7 +264,7 @@ function FileMetadata({ file }: { file: AdminPostFile }) {
       <Meta label="MIME type" value={file.mimeType} />
       <Meta label="Size" value={formatFileSize(file.fileSize)} />
       <Meta label="Extension" value={file.fileExtension} />
-      <Meta label="Created" value={formatAdminPostDate(file.createdAt)} />
+      <Meta label="Created" value={formatAdminPostDateTime(file.createdAt)} />
     </dl>
   );
 }
@@ -351,7 +281,7 @@ function UnavailableAction({ label, destructive }: { label: string; destructive?
           : "w-full cursor-not-allowed rounded-md border border-hairline px-3.5 py-2 text-sm font-medium text-ink opacity-40"
       }
     >
-      {label} unavailable until backend endpoint is implemented
+      {label} unavailable until backend endpoint is merged
     </button>
   );
 }
