@@ -119,6 +119,20 @@ class AdminApiStructureTests {
 		assertNoEntityComponent(AdminPostPageResponse.class);
 	}
 
+	@Test
+	void adminLabAnnouncementDetailRouteReturnsExistingSafeDetailDto() throws NoSuchMethodException {
+		Method detailMethod = AdminLabAnnouncementController.class.getMethod(
+				"getLabAnnouncementDetail",
+				UUID.class);
+		GetMapping getMapping = detailMethod.getAnnotation(GetMapping.class);
+
+		assertNotNull(getMapping);
+		assertEquals(List.of("/{postId}"), List.of(getMapping.value()));
+		assertEquals(AdminPostDetailResponse.class, detailMethod.getReturnType());
+		assertNoCredentialComponent(AdminPostDetailResponse.class);
+		assertNoEntityComponent(AdminPostDetailResponse.class);
+	}
+
 	private static void assertControllerBoundary(Class<?> controllerType) {
 		assertNotNull(controllerType.getAnnotation(RestController.class));
 		Profile profile = controllerType.getAnnotation(Profile.class);

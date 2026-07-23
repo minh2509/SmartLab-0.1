@@ -163,6 +163,26 @@ public class AdminPostService {
 				postModerationLogRepository.findAdminPostModerationHistory(post));
 	}
 
+	@Transactional(readOnly = true)
+	public AdminPostDetailResponse getLabAnnouncementDetail(GetAdminLabAnnouncementDetailQuery query) {
+		if (query == null) {
+			throw new InvalidAdminServiceInputException("Get admin lab announcement detail query must not be null.");
+		}
+		AdminRolePolicy.ActorContext actor = rolePolicy.requireAdminActor(query.actorUserId());
+		if (query.postId() == null) {
+			throw new InvalidAdminServiceInputException("Post ID must not be null.");
+		}
+		Post post = postRepository.findAdminPostDetail(actor.lab().getId(), query.postId())
+				.orElseThrow(() -> new ResourceNotFoundException("Post was not found."));
+		if (post.getContentType() != PostContentType.LAB_ANNOUNCEMENT) {
+			throw new ResourceNotFoundException("Post was not found.");
+		}
+		return mapper.toDetailResponse(
+				post,
+				postAttachmentRepository.findVisibleAdminPostAttachments(post),
+				postModerationLogRepository.findAdminPostModerationHistory(post));
+	}
+
 	@Transactional
 	public AdminPostModerationActionResponse approvePost(ApproveAdminPostCommand command) {
 		if (command == null) {
@@ -290,6 +310,11 @@ public class AdminPostService {
 	}
 
 	public record GetAdminPostDetailQuery(
+			UUID actorUserId,
+			UUID postId) {
+	}
+
+	public record GetAdminLabAnnouncementDetailQuery(
 			UUID actorUserId,
 			UUID postId) {
 	}

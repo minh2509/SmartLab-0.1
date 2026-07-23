@@ -727,6 +727,127 @@ class AdminPostServiceTests {
 	}
 
 	@Test
+	void getLabAnnouncementDetailRejectsNullQueryActorAndPostId() {
+		assertThrows(
+				InvalidAdminServiceInputException.class,
+				() -> service.getLabAnnouncementDetail(null));
+		assertThrows(
+				InvalidAdminServiceInputException.class,
+				() -> service.getLabAnnouncementDetail(
+						new AdminPostService.GetAdminLabAnnouncementDetailQuery(null, UUID.randomUUID())));
+
+		Lab lab = lab(UUID.randomUUID());
+		User actor = user(UUID.randomUUID(), lab, UserAccountStatus.ACTIVE);
+		stubActiveActor(actor, role(UUID.randomUUID(), AdminRolePolicy.ADMIN_ROLE_CODE));
+		assertThrows(
+				InvalidAdminServiceInputException.class,
+				() -> service.getLabAnnouncementDetail(
+						new AdminPostService.GetAdminLabAnnouncementDetailQuery(actor.getId(), null)));
+	}
+
+	@Test
+	void getLabAnnouncementDetailRejectsActorWithoutCurrentAdminRole() {
+		Lab lab = lab(UUID.randomUUID());
+		User memberActor = user(UUID.randomUUID(), lab, UserAccountStatus.ACTIVE);
+		stubActiveActor(memberActor, role(UUID.randomUUID(), AdminRolePolicy.MEMBER_ROLE_CODE));
+
+		assertThrows(
+				ForbiddenAdminOperationException.class,
+				() -> service.getLabAnnouncementDetail(new AdminPostService.GetAdminLabAnnouncementDetailQuery(
+						memberActor.getId(),
+						UUID.randomUUID())));
+	}
+
+	@Test
+	void getLabAnnouncementDetailUsesActorLabAndPostIdAndMapsAnnouncementForAdmin() {
+		Lab lab = lab(UUID.randomUUID());
+		User actor = user(UUID.randomUUID(), lab, UserAccountStatus.ACTIVE);
+		stubActiveActor(actor, role(UUID.randomUUID(), AdminRolePolicy.ADMIN_ROLE_CODE));
+		Post post = post(lab);
+		post.setContentType(PostContentType.LAB_ANNOUNCEMENT);
+		PostAttachment attachment = attachment(post, "00000000-0000-0000-0000-000000000001");
+		PostModerationLog log = moderationLog(post, "00000000-0000-0000-0000-000000000011");
+		when(postRepository.findAdminPostDetail(lab.getId(), post.getId())).thenReturn(Optional.of(post));
+		when(postAttachmentRepository.findVisibleAdminPostAttachments(post)).thenReturn(List.of(attachment));
+		when(postModerationLogRepository.findAdminPostModerationHistory(post)).thenReturn(List.of(log));
+
+		var response = service.getLabAnnouncementDetail(new AdminPostService.GetAdminLabAnnouncementDetailQuery(
+				actor.getId(),
+				post.getId()));
+
+		verify(postRepository).findAdminPostDetail(lab.getId(), post.getId());
+		verify(postAttachmentRepository).findVisibleAdminPostAttachments(post);
+		verify(postModerationLogRepository).findAdminPostModerationHistory(post);
+		verify(postRepository, never()).save(any(Post.class));
+		assertEquals(post.getId(), response.id());
+		assertEquals(PostContentType.LAB_ANNOUNCEMENT, response.contentType());
+		assertEquals(attachment.getId(), response.attachments().getFirst().attachmentId());
+		assertEquals(log.getId(), response.moderationHistory().getFirst().id());
+	}
+
+	@Test
+	void getLabAnnouncementDetailAcceptsSuperAdmin() {
+		Lab lab = lab(UUID.randomUUID());
+		User actor = user(UUID.randomUUID(), lab, UserAccountStatus.ACTIVE);
+		stubActiveActor(actor, role(UUID.randomUUID(), AdminRolePolicy.SUPER_ADMIN_ROLE_CODE));
+		Post post = post(lab);
+		post.setContentType(PostContentType.LAB_ANNOUNCEMENT);
+		when(postRepository.findAdminPostDetail(lab.getId(), post.getId())).thenReturn(Optional.of(post));
+		when(postAttachmentRepository.findVisibleAdminPostAttachments(post)).thenReturn(List.of());
+		when(postModerationLogRepository.findAdminPostModerationHistory(post)).thenReturn(List.of());
+
+		var response = service.getLabAnnouncementDetail(new AdminPostService.GetAdminLabAnnouncementDetailQuery(
+				actor.getId(),
+				post.getId()));
+
+		assertEquals(PostContentType.LAB_ANNOUNCEMENT, response.contentType());
+		verify(postRepository).findAdminPostDetail(lab.getId(), post.getId());
+	}
+
+	@Test
+	void getLabAnnouncementDetailConvertsEmptyRootLookupToGenericNotFound() {
+		Lab lab = lab(UUID.randomUUID());
+		User actor = user(UUID.randomUUID(), lab, UserAccountStatus.ACTIVE);
+		stubActiveActor(actor, role(UUID.randomUUID(), AdminRolePolicy.ADMIN_ROLE_CODE));
+		UUID postId = UUID.randomUUID();
+		when(postRepository.findAdminPostDetail(lab.getId(), postId)).thenReturn(Optional.empty());
+
+		ResourceNotFoundException exception = assertThrows(
+				ResourceNotFoundException.class,
+				() -> service.getLabAnnouncementDetail(new AdminPostService.GetAdminLabAnnouncementDetailQuery(
+						actor.getId(),
+						postId)));
+
+		assertEquals("Post was not found.", exception.getMessage());
+		verify(postAttachmentRepository, never()).findVisibleAdminPostAttachments(any(Post.class));
+		verify(postModerationLogRepository, never()).findAdminPostModerationHistory(any(Post.class));
+		verify(postRepository, never()).save(any(Post.class));
+	}
+
+	@Test
+	void getLabAnnouncementDetailHidesWrongContentTypeWithoutLoadingChildrenOrMutating() {
+		Lab lab = lab(UUID.randomUUID());
+		User actor = user(UUID.randomUUID(), lab, UserAccountStatus.ACTIVE);
+		stubActiveActor(actor, role(UUID.randomUUID(), AdminRolePolicy.ADMIN_ROLE_CODE));
+		Post post = post(lab);
+		post.setContentType(PostContentType.NEWS);
+		when(postRepository.findAdminPostDetail(lab.getId(), post.getId())).thenReturn(Optional.of(post));
+
+		ResourceNotFoundException exception = assertThrows(
+				ResourceNotFoundException.class,
+				() -> service.getLabAnnouncementDetail(new AdminPostService.GetAdminLabAnnouncementDetailQuery(
+						actor.getId(),
+						post.getId())));
+
+		assertEquals("Post was not found.", exception.getMessage());
+		verify(postAttachmentRepository, never()).findVisibleAdminPostAttachments(any(Post.class));
+		verify(postModerationLogRepository, never()).findAdminPostModerationHistory(any(Post.class));
+		verify(postRepository, never()).save(any(Post.class));
+		verify(postAttachmentRepository, never()).save(any(PostAttachment.class));
+		verify(postModerationLogRepository, never()).save(any(PostModerationLog.class));
+	}
+
+	@Test
 	void approvePostRejectsNullCommandActorAndPostId() {
 		assertThrows(
 				InvalidAdminServiceInputException.class,
@@ -952,6 +1073,9 @@ class AdminPostServiceTests {
 		assertReadOnlyTransaction(AdminPostService.class.getMethod(
 				"getPostDetail",
 				AdminPostService.GetAdminPostDetailQuery.class));
+		assertReadOnlyTransaction(AdminPostService.class.getMethod(
+				"getLabAnnouncementDetail",
+				AdminPostService.GetAdminLabAnnouncementDetailQuery.class));
 		assertMutationTransaction(AdminPostService.class.getMethod(
 				"approvePost",
 				AdminPostService.ApproveAdminPostCommand.class));
