@@ -19,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.smartlab.dto.response.admin.AdminPostDetailResponse;
 import com.smartlab.dto.response.admin.AdminPostModerationActionResponse;
 import com.smartlab.dto.response.admin.AdminPostPageResponse;
+import com.smartlab.entity.Lab;
 import com.smartlab.entity.Post;
 import com.smartlab.entity.PostModerationLog;
 import com.smartlab.enums.PostContentType;
@@ -77,7 +78,7 @@ public class AdminPostService {
 		int page = normalizedPage(query.page());
 		int size = normalizedSize(query.size());
 
-		return mapper.toPageResponse(postRepository.findAdminPosts(
+		return listPostsForActor(
 				actor.lab(),
 				normalizedKeywordPattern(query.keyword()),
 				query.status(),
@@ -85,7 +86,8 @@ public class AdminPostService {
 				query.authorId(),
 				query.projectId(),
 				query.visibility(),
-				PageRequest.of(page, size)));
+				page,
+				size);
 	}
 
 	@Transactional(readOnly = true)
@@ -121,6 +123,27 @@ public class AdminPostService {
 				orderedPosts,
 				pageable,
 				orderedIdPage.getTotalElements()));
+	}
+
+	@Transactional(readOnly = true)
+	public AdminPostPageResponse listLabAnnouncements(ListLabAnnouncementsQuery query) {
+		if (query == null) {
+			throw new InvalidAdminServiceInputException("List lab announcements query must not be null.");
+		}
+		AdminRolePolicy.ActorContext actor = rolePolicy.requireAdminActor(query.actorUserId());
+		int page = normalizedPage(query.page());
+		int size = normalizedSize(query.size());
+
+		return listPostsForActor(
+				actor.lab(),
+				null,
+				null,
+				PostContentType.LAB_ANNOUNCEMENT,
+				null,
+				null,
+				null,
+				page,
+				size);
 	}
 
 	@Transactional(readOnly = true)
@@ -221,6 +244,27 @@ public class AdminPostService {
 		return "%" + escapedKeyword + "%";
 	}
 
+	private AdminPostPageResponse listPostsForActor(
+			Lab lab,
+			String keywordPattern,
+			PostStatus status,
+			PostContentType contentType,
+			UUID authorId,
+			UUID projectId,
+			PostVisibility visibility,
+			int page,
+			int size) {
+		return mapper.toPageResponse(postRepository.findAdminPosts(
+				lab,
+				keywordPattern,
+				status,
+				contentType,
+				authorId,
+				projectId,
+				visibility,
+				PageRequest.of(page, size)));
+	}
+
 	public record ListAdminPostsQuery(
 			UUID actorUserId,
 			Integer page,
@@ -234,6 +278,12 @@ public class AdminPostService {
 	}
 
 	public record ListPendingAdminPostsQuery(
+			UUID actorUserId,
+			Integer page,
+			Integer size) {
+	}
+
+	public record ListLabAnnouncementsQuery(
 			UUID actorUserId,
 			Integer page,
 			Integer size) {

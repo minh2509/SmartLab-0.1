@@ -455,6 +455,159 @@ class AdminPostServiceTests {
 	}
 
 	@Test
+	void listLabAnnouncementsRejectsNullQuery() {
+		assertThrows(
+				InvalidAdminServiceInputException.class,
+				() -> service.listLabAnnouncements(null));
+	}
+
+	@Test
+	void listLabAnnouncementsRejectsActorsWithoutCurrentDatabaseAdminRole() {
+		UUID missingActorId = UUID.randomUUID();
+		when(userRepository.findById(missingActorId)).thenReturn(Optional.empty());
+
+		assertThrows(
+				ForbiddenAdminOperationException.class,
+				() -> service.listLabAnnouncements(new AdminPostService.ListLabAnnouncementsQuery(
+						missingActorId,
+						null,
+						null)));
+
+		Lab lab = lab(UUID.randomUUID());
+		User memberActor = user(UUID.randomUUID(), lab, UserAccountStatus.ACTIVE);
+		stubActiveActor(memberActor, role(UUID.randomUUID(), AdminRolePolicy.MEMBER_ROLE_CODE));
+		assertThrows(
+				ForbiddenAdminOperationException.class,
+				() -> service.listLabAnnouncements(new AdminPostService.ListLabAnnouncementsQuery(
+						memberActor.getId(),
+						null,
+						null)));
+
+		User leaderActor = user(UUID.randomUUID(), lab, UserAccountStatus.ACTIVE);
+		stubActiveActor(leaderActor, role(UUID.randomUUID(), AdminRolePolicy.LEADER_ROLE_CODE));
+		assertThrows(
+				ForbiddenAdminOperationException.class,
+				() -> service.listLabAnnouncements(new AdminPostService.ListLabAnnouncementsQuery(
+						leaderActor.getId(),
+						null,
+						null)));
+
+		User revokedActor = user(UUID.randomUUID(), lab, UserAccountStatus.ACTIVE);
+		when(userRepository.findById(revokedActor.getId())).thenReturn(Optional.of(revokedActor));
+		when(userRoleRepository.findByUserAndStatus(revokedActor, UserRoleStatus.ACTIVE)).thenReturn(List.of());
+		assertThrows(
+				ForbiddenAdminOperationException.class,
+				() -> service.listLabAnnouncements(new AdminPostService.ListLabAnnouncementsQuery(
+						revokedActor.getId(),
+						null,
+						null)));
+	}
+
+	@Test
+	void listLabAnnouncementsUsesActorLabFixedContentTypeDefaultsAndSafeMappingForAdmin() {
+		Lab lab = lab(UUID.randomUUID());
+		User actor = user(UUID.randomUUID(), lab, UserAccountStatus.ACTIVE);
+		stubActiveActor(actor, role(UUID.randomUUID(), AdminRolePolicy.ADMIN_ROLE_CODE));
+		Post announcement = post(lab);
+		announcement.setContentType(PostContentType.LAB_ANNOUNCEMENT);
+		when(postRepository.findAdminPosts(
+				any(),
+				any(),
+				any(),
+				any(),
+				any(),
+				any(),
+				any(),
+				any(Pageable.class)))
+						.thenReturn(new PageImpl<>(List.of(announcement), PageRequest.of(0, 20), 1));
+
+		var response = service.listLabAnnouncements(new AdminPostService.ListLabAnnouncementsQuery(
+				actor.getId(),
+				null,
+				null));
+
+		ArgumentCaptor<Pageable> pageableCaptor = ArgumentCaptor.forClass(Pageable.class);
+		verify(postRepository).findAdminPosts(
+				org.mockito.Mockito.eq(lab),
+				org.mockito.Mockito.isNull(),
+				org.mockito.Mockito.isNull(),
+				org.mockito.Mockito.eq(PostContentType.LAB_ANNOUNCEMENT),
+				org.mockito.Mockito.isNull(),
+				org.mockito.Mockito.isNull(),
+				org.mockito.Mockito.isNull(),
+				pageableCaptor.capture());
+		assertEquals(0, pageableCaptor.getValue().getPageNumber());
+		assertEquals(20, pageableCaptor.getValue().getPageSize());
+		assertEquals(1, response.totalElements());
+		assertEquals(PostContentType.LAB_ANNOUNCEMENT, response.content().getFirst().contentType());
+		assertFalse(java.util.Arrays.stream(response.content().getFirst().getClass().getRecordComponents())
+				.anyMatch(component -> List.of("content", "email", "passwordHash", "reviewNote", "deletedAt")
+						.contains(component.getName())));
+	}
+
+	@Test
+	void listLabAnnouncementsAcceptsSuperAdminAndReturnsEmptyPage() {
+		Lab lab = lab(UUID.randomUUID());
+		User actor = user(UUID.randomUUID(), lab, UserAccountStatus.ACTIVE);
+		stubActiveActor(actor, role(UUID.randomUUID(), AdminRolePolicy.SUPER_ADMIN_ROLE_CODE));
+		when(postRepository.findAdminPosts(
+				any(),
+				any(),
+				any(),
+				any(),
+				any(),
+				any(),
+				any(),
+				any(Pageable.class)))
+						.thenReturn(Page.empty(PageRequest.of(1, 10)));
+
+		var response = service.listLabAnnouncements(new AdminPostService.ListLabAnnouncementsQuery(
+				actor.getId(),
+				1,
+				10));
+
+		verify(postRepository).findAdminPosts(
+				org.mockito.Mockito.eq(lab),
+				org.mockito.Mockito.isNull(),
+				org.mockito.Mockito.isNull(),
+				org.mockito.Mockito.eq(PostContentType.LAB_ANNOUNCEMENT),
+				org.mockito.Mockito.isNull(),
+				org.mockito.Mockito.isNull(),
+				org.mockito.Mockito.isNull(),
+				any(Pageable.class));
+		assertEquals(List.of(), response.content());
+		assertEquals(1, response.page());
+		assertEquals(10, response.size());
+		assertEquals(0, response.totalElements());
+	}
+
+	@Test
+	void listLabAnnouncementsRejectsInvalidPageAndSizeLikeAdminPostList() {
+		Lab lab = lab(UUID.randomUUID());
+		User actor = user(UUID.randomUUID(), lab, UserAccountStatus.ACTIVE);
+		stubActiveActor(actor, role(UUID.randomUUID(), AdminRolePolicy.ADMIN_ROLE_CODE));
+
+		assertThrows(
+				InvalidAdminServiceInputException.class,
+				() -> service.listLabAnnouncements(new AdminPostService.ListLabAnnouncementsQuery(
+						actor.getId(),
+						-1,
+						20)));
+		assertThrows(
+				InvalidAdminServiceInputException.class,
+				() -> service.listLabAnnouncements(new AdminPostService.ListLabAnnouncementsQuery(
+						actor.getId(),
+						0,
+						0)));
+		assertThrows(
+				InvalidAdminServiceInputException.class,
+				() -> service.listLabAnnouncements(new AdminPostService.ListLabAnnouncementsQuery(
+						actor.getId(),
+						0,
+						101)));
+	}
+
+	@Test
 	void getPostDetailRejectsNullQueryActorAndPostId() {
 		assertThrows(
 				InvalidAdminServiceInputException.class,
@@ -793,6 +946,9 @@ class AdminPostServiceTests {
 		assertReadOnlyTransaction(AdminPostService.class.getMethod(
 				"listPendingPosts",
 				AdminPostService.ListPendingAdminPostsQuery.class));
+		assertReadOnlyTransaction(AdminPostService.class.getMethod(
+				"listLabAnnouncements",
+				AdminPostService.ListLabAnnouncementsQuery.class));
 		assertReadOnlyTransaction(AdminPostService.class.getMethod(
 				"getPostDetail",
 				AdminPostService.GetAdminPostDetailQuery.class));

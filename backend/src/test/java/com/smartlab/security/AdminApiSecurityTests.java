@@ -138,6 +138,20 @@ class AdminApiSecurityTests {
 	}
 
 	@Test
+	void adminLabAnnouncementListUsesExistingAdminAuthorizationRules() throws Exception {
+		mockMvc.perform(get("/api/admin/lab-announcements"))
+				.andExpect(status().isUnauthorized());
+		mockMvc.perform(get("/api/admin/lab-announcements").header("Authorization", "Bearer " + loginToken("member@example.test")))
+				.andExpect(status().isForbidden());
+		mockMvc.perform(get("/api/admin/lab-announcements").header("Authorization", "Bearer " + loginToken("leader@example.test")))
+				.andExpect(status().isForbidden());
+		mockMvc.perform(get("/api/admin/lab-announcements").header("Authorization", "Bearer " + loginToken("admin@example.test")))
+				.andExpect(status().isOk());
+		mockMvc.perform(get("/api/admin/lab-announcements").header("Authorization", "Bearer " + loginToken("super@example.test")))
+				.andExpect(status().isOk());
+	}
+
+	@Test
 	void adminPostDetailUsesExistingAdminAuthorizationRules() throws Exception {
 		UUID postId = UUID.randomUUID();
 		mockMvc.perform(get("/api/admin/posts/{postId}", postId))
@@ -319,6 +333,11 @@ class AdminApiSecurityTests {
 		@GetMapping("/api/admin/posts/pending")
 		Map<String, String> pendingAdminPosts() {
 			return Map.of("ok", "admin-pending-posts");
+		}
+
+		@GetMapping("/api/admin/lab-announcements")
+		Map<String, String> adminLabAnnouncements() {
+			return Map.of("ok", "admin-lab-announcements");
 		}
 
 		@GetMapping("/api/admin/posts/{postId}")
