@@ -90,9 +90,9 @@ class ContentPersistenceRepositoryTests {
 		assertTrue(query.value().contains("post.lab = :lab"));
 		assertTrue(query.value().contains("post.deletedAt is null"));
 		assertTrue(query.value().contains(":keywordPattern is null"));
-		assertTrue(query.value().contains("lower(post.title) like :keywordPattern"));
-		assertTrue(query.value().contains("lower(post.slug) like :keywordPattern"));
-		assertTrue(query.value().contains("lower(post.summary) like :keywordPattern"));
+		assertTrue(query.value().contains("lower(post.title) like :keywordPattern escape '!'"));
+		assertTrue(query.value().contains("lower(post.slug) like :keywordPattern escape '!'"));
+		assertTrue(query.value().contains("lower(post.summary) like :keywordPattern escape '!'"));
 		assertFalse(query.value().contains("lower(concat"));
 		assertFalse(query.value().contains("lower(:keywordPattern"));
 		assertFalse(query.value().contains("lower(post.content)"));
@@ -106,9 +106,9 @@ class ContentPersistenceRepositoryTests {
 		assertTrue(query.countQuery().contains("post.lab = :lab"));
 		assertTrue(query.countQuery().contains("post.deletedAt is null"));
 		assertTrue(query.countQuery().contains(":keywordPattern is null"));
-		assertTrue(query.countQuery().contains("lower(post.title) like :keywordPattern"));
-		assertTrue(query.countQuery().contains("lower(post.slug) like :keywordPattern"));
-		assertTrue(query.countQuery().contains("lower(post.summary) like :keywordPattern"));
+		assertTrue(query.countQuery().contains("lower(post.title) like :keywordPattern escape '!'"));
+		assertTrue(query.countQuery().contains("lower(post.slug) like :keywordPattern escape '!'"));
+		assertTrue(query.countQuery().contains("lower(post.summary) like :keywordPattern escape '!'"));
 		assertFalse(query.countQuery().contains("lower(concat"));
 		assertFalse(query.countQuery().contains("lower(:keywordPattern"));
 		assertFalse(query.countQuery().contains("lower(post.content)"));

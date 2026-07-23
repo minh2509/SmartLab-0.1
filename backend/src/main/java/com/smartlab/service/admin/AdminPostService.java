@@ -85,7 +85,12 @@ public class AdminPostService {
 		if (normalizedKeyword.isBlank()) {
 			return null;
 		}
-		return "%" + normalizedKeyword.toLowerCase(Locale.ROOT) + "%";
+		String escapedKeyword = normalizedKeyword
+				.toLowerCase(Locale.ROOT)
+				.replace("!", "!!")
+				.replace("%", "!%")
+				.replace("_", "!_");
+		return "%" + escapedKeyword + "%";
 	}
 
 	public record ListAdminPostsQuery(

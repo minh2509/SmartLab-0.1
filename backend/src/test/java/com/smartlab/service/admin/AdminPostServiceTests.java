@@ -190,40 +190,20 @@ class AdminPostServiceTests {
 
 	@Test
 	void listPostsLowercasesMixedCaseKeywordPatternForCaseInsensitiveSearch() {
-		Lab lab = lab(UUID.randomUUID());
-		User actor = user(UUID.randomUUID(), lab, UserAccountStatus.ACTIVE);
-		stubActiveActor(actor, role(UUID.randomUUID(), AdminRolePolicy.ADMIN_ROLE_CODE));
-		when(postRepository.findAdminPosts(
-				any(),
-				any(),
-				any(),
-				any(),
-				any(),
-				any(),
-				any(),
-				any(Pageable.class)))
-						.thenReturn(Page.empty());
+		assertKeywordPattern("  RoBoTiCs  ", "%robotics%");
+	}
 
-		service.listPosts(new AdminPostService.ListAdminPostsQuery(
-				actor.getId(),
-				0,
-				20,
-				"  RoBoTiCs  ",
-				null,
-				null,
-				null,
-				null,
-				null));
+	@Test
+	void listPostsEscapesKeywordLikeMetacharactersAsLiterals() {
+		assertKeywordPattern("%", "%!%%");
+		assertKeywordPattern("_", "%!_%");
+		assertKeywordPattern("!", "%!!%");
+		assertKeywordPattern("A!_%*", "%a!!!_!%*%");
+	}
 
-		verify(postRepository).findAdminPosts(
-				org.mockito.Mockito.eq(lab),
-				org.mockito.Mockito.eq("%robotics%"),
-				org.mockito.Mockito.isNull(),
-				org.mockito.Mockito.isNull(),
-				org.mockito.Mockito.isNull(),
-				org.mockito.Mockito.isNull(),
-				org.mockito.Mockito.isNull(),
-				any(Pageable.class));
+	@Test
+	void listPostsTreatsNullKeywordAsAbsent() {
+		assertKeywordPattern(null, null);
 	}
 
 	@Test
@@ -343,6 +323,46 @@ class AdminPostServiceTests {
 		when(userRepository.findById(actor.getId())).thenReturn(Optional.of(actor));
 		when(userRoleRepository.findByUserAndStatus(actor, UserRoleStatus.ACTIVE))
 				.thenReturn(List.of(userRole(actor, role)));
+	}
+
+	private void assertKeywordPattern(String keyword, String expectedPattern) {
+		Lab lab = lab(UUID.randomUUID());
+		User actor = user(UUID.randomUUID(), lab, UserAccountStatus.ACTIVE);
+		stubActiveActor(actor, role(UUID.randomUUID(), AdminRolePolicy.ADMIN_ROLE_CODE));
+		when(postRepository.findAdminPosts(
+				any(),
+				any(),
+				any(),
+				any(),
+				any(),
+				any(),
+				any(),
+				any(Pageable.class)))
+						.thenReturn(Page.empty());
+
+		service.listPosts(new AdminPostService.ListAdminPostsQuery(
+				actor.getId(),
+				0,
+				20,
+				keyword,
+				null,
+				null,
+				null,
+				null,
+				null));
+
+		ArgumentCaptor<String> keywordCaptor = ArgumentCaptor.forClass(String.class);
+		verify(postRepository).findAdminPosts(
+				org.mockito.Mockito.eq(lab),
+				keywordCaptor.capture(),
+				org.mockito.Mockito.isNull(),
+				org.mockito.Mockito.isNull(),
+				org.mockito.Mockito.isNull(),
+				org.mockito.Mockito.isNull(),
+				org.mockito.Mockito.isNull(),
+				any(Pageable.class));
+		assertEquals(expectedPattern, keywordCaptor.getValue());
+		org.mockito.Mockito.clearInvocations(postRepository, userRepository, roleRepository, userRoleRepository);
 	}
 
 	private static Lab lab(UUID id) {

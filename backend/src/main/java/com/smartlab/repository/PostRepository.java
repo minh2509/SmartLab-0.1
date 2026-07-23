@@ -50,9 +50,9 @@ public interface PostRepository extends JpaRepository<Post, UUID> {
 					where post.lab = :lab
 						and post.deletedAt is null
 						and (:keywordPattern is null
-							or lower(post.title) like :keywordPattern
-							or lower(post.slug) like :keywordPattern
-							or lower(post.summary) like :keywordPattern)
+							or lower(post.title) like :keywordPattern escape '!'
+							or lower(post.slug) like :keywordPattern escape '!'
+							or lower(post.summary) like :keywordPattern escape '!')
 						and (:status is null or post.moderationStatus = :status)
 						and (:contentType is null or post.contentType = :contentType)
 						and (:authorId is null or post.author.id = :authorId)
@@ -66,9 +66,9 @@ public interface PostRepository extends JpaRepository<Post, UUID> {
 					where post.lab = :lab
 						and post.deletedAt is null
 						and (:keywordPattern is null
-							or lower(post.title) like :keywordPattern
-							or lower(post.slug) like :keywordPattern
-							or lower(post.summary) like :keywordPattern)
+							or lower(post.title) like :keywordPattern escape '!'
+							or lower(post.slug) like :keywordPattern escape '!'
+							or lower(post.summary) like :keywordPattern escape '!')
 						and (:status is null or post.moderationStatus = :status)
 						and (:contentType is null or post.contentType = :contentType)
 						and (:authorId is null or post.author.id = :authorId)
