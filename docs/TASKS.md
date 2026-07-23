@@ -141,7 +141,7 @@ SPRING_PROFILES_ACTIVE=nodb ./mvnw clean test
 
 - Name: List posts waiting for administrator review
 - Assignee: Minh
-- Status: `READY_FOR_REVIEW`
+- Status: `DONE`
 - Progress: 100%
 - Branch: `feature/minh-admin-pending-posts`
 - Endpoint: `GET /api/admin/posts/pending`
@@ -155,6 +155,7 @@ SPRING_PROFILES_ACTIVE=nodb ./mvnw clean test
 - Notes: Targeted ADM-056 tests passed, including controller, service, repository-structure, and admin security coverage.
 - Notes: PostgreSQL runtime verified HTTP 401, 403, and 200 behavior; latest-SUBMIT ordering, UUID tie-breaks, null submission timestamps, stable pagination, lab isolation, soft-delete exclusion, and sensitive-field omission all passed.
 - Notes: Runtime fixtures and backend process were removed successfully; remaining fixture labs, users, user roles, posts, and moderation logs are all zero.
+- Notes: Implementation merged through PR #30 with merge commit `15d56023e2f9a412c6f8e6f86d442dbb085df4b4`.
 
 ### Acceptance Criteria
 
