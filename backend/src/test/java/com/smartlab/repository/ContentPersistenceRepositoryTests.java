@@ -1,6 +1,7 @@
 package com.smartlab.repository;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.lang.reflect.Method;
@@ -9,7 +10,11 @@ import java.util.Optional;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
 
 import com.smartlab.entity.File;
 import com.smartlab.entity.Lab;
@@ -19,6 +24,7 @@ import com.smartlab.entity.PostCategory;
 import com.smartlab.entity.PostModerationLog;
 import com.smartlab.entity.Project;
 import com.smartlab.entity.User;
+import com.smartlab.enums.PostContentType;
 import com.smartlab.enums.PostModerationAction;
 import com.smartlab.enums.PostStatus;
 import com.smartlab.enums.PostVisibility;
@@ -52,6 +58,69 @@ class ContentPersistenceRepositoryTests {
 		assertReturnType(
 				PostRepository.class.getMethod("findByLabAndPublishedAtIsNotNullOrderByPublishedAtDesc", Lab.class),
 				List.class);
+		assertReturnType(
+				PostRepository.class.getMethod(
+						"findAdminPosts",
+						Lab.class,
+						String.class,
+						PostStatus.class,
+						PostContentType.class,
+						UUID.class,
+						UUID.class,
+						PostVisibility.class,
+						Pageable.class),
+				Page.class);
+	}
+
+	@Test
+	void adminPostListQueryIsLabScopedSoftDeleteFilteredAndStableOrdered() throws NoSuchMethodException {
+		Method method = PostRepository.class.getMethod(
+				"findAdminPosts",
+				Lab.class,
+				String.class,
+				PostStatus.class,
+				PostContentType.class,
+				UUID.class,
+				UUID.class,
+				PostVisibility.class,
+				Pageable.class);
+		Query query = method.getAnnotation(Query.class);
+		EntityGraph entityGraph = method.getAnnotation(EntityGraph.class);
+
+		assertTrue(query.value().contains("post.lab = :lab"));
+		assertTrue(query.value().contains("post.deletedAt is null"));
+		assertTrue(query.value().contains(":keywordPattern is null"));
+		assertTrue(query.value().contains("lower(post.title) like :keywordPattern"));
+		assertTrue(query.value().contains("lower(post.slug) like :keywordPattern"));
+		assertTrue(query.value().contains("lower(post.summary) like :keywordPattern"));
+		assertFalse(query.value().contains("lower(concat"));
+		assertFalse(query.value().contains("lower(:keywordPattern"));
+		assertFalse(query.value().contains("lower(post.content)"));
+		assertFalse(query.value().contains("post.reviewNote"));
+		assertTrue(query.value().contains(":status is null or post.moderationStatus = :status"));
+		assertTrue(query.value().contains(":contentType is null or post.contentType = :contentType"));
+		assertTrue(query.value().contains(":authorId is null or post.author.id = :authorId"));
+		assertTrue(query.value().contains(":projectId is null or post.project.id = :projectId"));
+		assertTrue(query.value().contains(":visibility is null or post.visibility = :visibility"));
+		assertTrue(query.value().contains("order by post.createdAt desc, post.id desc"));
+		assertTrue(query.countQuery().contains("post.lab = :lab"));
+		assertTrue(query.countQuery().contains("post.deletedAt is null"));
+		assertTrue(query.countQuery().contains(":keywordPattern is null"));
+		assertTrue(query.countQuery().contains("lower(post.title) like :keywordPattern"));
+		assertTrue(query.countQuery().contains("lower(post.slug) like :keywordPattern"));
+		assertTrue(query.countQuery().contains("lower(post.summary) like :keywordPattern"));
+		assertFalse(query.countQuery().contains("lower(concat"));
+		assertFalse(query.countQuery().contains("lower(:keywordPattern"));
+		assertFalse(query.countQuery().contains("lower(post.content)"));
+		assertFalse(query.countQuery().contains("post.reviewNote"));
+		assertTrue(query.countQuery().contains(":status is null or post.moderationStatus = :status"));
+		assertTrue(query.countQuery().contains(":contentType is null or post.contentType = :contentType"));
+		assertTrue(query.countQuery().contains(":authorId is null or post.author.id = :authorId"));
+		assertTrue(query.countQuery().contains(":projectId is null or post.project.id = :projectId"));
+		assertTrue(query.countQuery().contains(":visibility is null or post.visibility = :visibility"));
+		assertEquals(
+				List.of("author", "project", "category", "coverFile"),
+				List.of(entityGraph.attributePaths()));
 	}
 
 	@Test
