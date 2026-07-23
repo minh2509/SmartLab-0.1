@@ -19,6 +19,8 @@ import org.springframework.web.bind.annotation.RestController;
 import com.smartlab.dto.request.admin.CreateAdminUserRequest;
 import com.smartlab.dto.request.admin.ReplaceUserRolesRequest;
 import com.smartlab.dto.request.admin.UpdateAdminUserRequest;
+import com.smartlab.dto.response.admin.AdminPostDetailResponse;
+import com.smartlab.dto.response.admin.AdminPostModerationActionResponse;
 import com.smartlab.dto.response.admin.AdminPermissionResponse;
 import com.smartlab.dto.response.admin.AdminRoleCatalogResponse;
 import com.smartlab.dto.response.admin.AdminRoleResponse;

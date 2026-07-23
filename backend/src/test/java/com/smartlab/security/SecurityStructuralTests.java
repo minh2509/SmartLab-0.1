@@ -39,7 +39,7 @@ class SecurityStructuralTests {
 	}
 
 	@Test
-	void deferredSecurityFeaturesAndForbiddenImplementationsAreAbsent() throws IOException {
+	void forbiddenSecurityImplementationsRemainAbsent() throws IOException {
 		List<Path> javaFiles;
 		try (Stream<Path> files = Files.walk(Path.of("src/main/java/com/smartlab"))) {
 			javaFiles = files.filter(path -> path.toString().endsWith(".java"))
@@ -58,10 +58,7 @@ class SecurityStructuralTests {
 		assertFalse(allMainJava.contains("refreshToken"));
 		assertFalse(allMainJava.contains("@PostMapping(\"/logout\")"));
 		assertFalse(allMainJava.contains("@DeleteMapping(\"/logout\")"));
-		assertFalse(allMainJava.contains("LoginHistoryRepository"));
-		assertFalse(allMainJava.contains("AuditLogRepository"));
 		assertFalse(allMainJava.contains("NotificationRepository"));
-		assertFalse(allMainJava.contains("setLastLoginAt"));
 		assertFalse(allMainJava.contains("io.jsonwebtoken"));
 		assertFalse(allMainJava.contains("com.auth0.jwt"));
 		assertFalse(allMainJava.contains("jjwt"));
