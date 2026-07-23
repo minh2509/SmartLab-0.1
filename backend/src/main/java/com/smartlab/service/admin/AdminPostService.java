@@ -1,5 +1,7 @@
 package com.smartlab.service.admin;
 
+import java.time.Clock;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -15,17 +17,23 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.smartlab.dto.response.admin.AdminPostDetailResponse;
+import com.smartlab.dto.response.admin.AdminPostModerationActionResponse;
 import com.smartlab.dto.response.admin.AdminPostPageResponse;
 import com.smartlab.entity.Post;
+import com.smartlab.entity.PostModerationLog;
 import com.smartlab.enums.PostContentType;
+import com.smartlab.enums.PostModerationAction;
 import com.smartlab.enums.PostStatus;
 import com.smartlab.enums.PostVisibility;
+import com.smartlab.exception.ConflictingAdminOperationException;
 import com.smartlab.exception.InvalidAdminServiceInputException;
+import com.smartlab.exception.InvalidPostTransitionException;
 import com.smartlab.exception.ResourceNotFoundException;
 import com.smartlab.mapper.AdminPostApiMapper;
 import com.smartlab.repository.PostAttachmentRepository;
 import com.smartlab.repository.PostModerationLogRepository;
 import com.smartlab.repository.PostRepository;
+import com.smartlab.service.common.PostWorkflowService;
 
 @Service
 @Profile("!nodb")
@@ -39,19 +47,25 @@ public class AdminPostService {
 	private final PostAttachmentRepository postAttachmentRepository;
 	private final PostModerationLogRepository postModerationLogRepository;
 	private final AdminRolePolicy rolePolicy;
+	private final PostWorkflowService workflowService;
 	private final AdminPostApiMapper mapper;
+	private final Clock clock;
 
 	public AdminPostService(
 			PostRepository postRepository,
 			PostAttachmentRepository postAttachmentRepository,
 			PostModerationLogRepository postModerationLogRepository,
 			AdminRolePolicy rolePolicy,
-			AdminPostApiMapper mapper) {
+			PostWorkflowService workflowService,
+			AdminPostApiMapper mapper,
+			Clock clock) {
 		this.postRepository = postRepository;
 		this.postAttachmentRepository = postAttachmentRepository;
 		this.postModerationLogRepository = postModerationLogRepository;
 		this.rolePolicy = rolePolicy;
+		this.workflowService = workflowService;
 		this.mapper = mapper;
+		this.clock = clock;
 	}
 
 	@Transactional(readOnly = true)
@@ -126,6 +140,51 @@ public class AdminPostService {
 				postModerationLogRepository.findAdminPostModerationHistory(post));
 	}
 
+	@Transactional
+	public AdminPostModerationActionResponse approvePost(ApproveAdminPostCommand command) {
+		if (command == null) {
+			throw new InvalidAdminServiceInputException("Approve admin post command must not be null.");
+		}
+		AdminRolePolicy.ActorContext actor = rolePolicy.requireAdminActor(command.actorUserId());
+		if (command.postId() == null) {
+			throw new InvalidAdminServiceInputException("Post ID must not be null.");
+		}
+		Post post = postRepository.findAdminPostForApproval(actor.lab().getId(), command.postId())
+				.orElseThrow(() -> new ResourceNotFoundException("Post was not found."));
+		PostStatus fromStatus = post.getModerationStatus();
+		PostStatus toStatus = PostStatus.APPROVED;
+		if (fromStatus != PostStatus.PENDING_REVIEW) {
+			throw new ConflictingAdminOperationException("Only posts pending review can be approved.");
+		}
+		try {
+			workflowService.validateTransition(fromStatus, toStatus);
+		} catch (InvalidPostTransitionException exception) {
+			throw new ConflictingAdminOperationException(exception.getMessage());
+		}
+
+		OffsetDateTime reviewedAt = OffsetDateTime.now(clock);
+		post.setModerationStatus(toStatus);
+		post.setReviewedBy(actor.actor());
+		post.setReviewedAt(reviewedAt);
+		post.setReviewNote(null);
+
+		PostModerationLog log = new PostModerationLog();
+		log.setPost(post);
+		log.setAction(PostModerationAction.APPROVE);
+		log.setFromStatus(fromStatus);
+		log.setToStatus(toStatus);
+		log.setActor(actor.actor());
+		log.setReason(null);
+		postModerationLogRepository.save(log);
+
+		return mapper.toModerationActionResponse(
+				post,
+				PostModerationAction.APPROVE,
+				fromStatus,
+				toStatus,
+				reviewedAt);
+	}
+
 	private static int normalizedPage(Integer page) {
 		if (page == null) {
 			return DEFAULT_PAGE;
@@ -181,6 +240,11 @@ public class AdminPostService {
 	}
 
 	public record GetAdminPostDetailQuery(
+			UUID actorUserId,
+			UUID postId) {
+	}
+
+	public record ApproveAdminPostCommand(
 			UUID actorUserId,
 			UUID postId) {
 	}

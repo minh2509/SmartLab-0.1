@@ -1,5 +1,6 @@
 package com.smartlab.mapper;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -7,6 +8,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Component;
 
 import com.smartlab.dto.response.admin.AdminPostDetailResponse;
+import com.smartlab.dto.response.admin.AdminPostModerationActionResponse;
 import com.smartlab.dto.response.admin.AdminPostPageResponse;
 import com.smartlab.dto.response.admin.AdminPostSummaryResponse;
 import com.smartlab.entity.File;
@@ -16,6 +18,8 @@ import com.smartlab.entity.PostCategory;
 import com.smartlab.entity.PostModerationLog;
 import com.smartlab.entity.Project;
 import com.smartlab.entity.User;
+import com.smartlab.enums.PostModerationAction;
+import com.smartlab.enums.PostStatus;
 
 @Component
 public class AdminPostApiMapper {
@@ -82,6 +86,24 @@ public class AdminPostApiMapper {
 				post.getPublishedAt(),
 				post.getCreatedAt(),
 				post.getUpdatedAt());
+	}
+
+	public AdminPostModerationActionResponse toModerationActionResponse(
+			Post post,
+			PostModerationAction action,
+			PostStatus fromStatus,
+			PostStatus toStatus,
+			OffsetDateTime reviewedAt) {
+		User reviewedBy = post.getReviewedBy();
+		return new AdminPostModerationActionResponse(
+				post.getId(),
+				action,
+				fromStatus,
+				toStatus,
+				post.getModerationStatus(),
+				idOf(reviewedBy),
+				reviewedBy == null ? null : reviewedBy.getFullName(),
+				reviewedAt);
 	}
 
 	private AdminPostDetailResponse.AuthorResponse authorResponse(User author) {
