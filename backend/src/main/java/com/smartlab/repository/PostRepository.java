@@ -114,6 +114,15 @@ public interface PostRepository extends JpaRepository<Post, UUID> {
 			Pageable pageable);
 
 	@EntityGraph(attributePaths = {"author", "project", "category", "coverFile"})
-	@Query("select post from Post post where post.id in :ids")
-	List<Post> findAdminPostsByIdIn(@Param("ids") Collection<UUID> ids);
+	@Query("""
+			select post
+			from Post post
+			where post.lab.id = :labId
+				and post.deletedAt is null
+				and post.moderationStatus = com.smartlab.enums.PostStatus.PENDING_REVIEW
+				and post.id in :ids
+			""")
+	List<Post> findPendingAdminPostsByIdIn(
+			@Param("labId") UUID labId,
+			@Param("ids") Collection<UUID> ids);
 }

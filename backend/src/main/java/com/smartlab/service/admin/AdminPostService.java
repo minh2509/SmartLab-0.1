@@ -83,7 +83,8 @@ public class AdminPostService {
 					orderedIdPage.getTotalElements()));
 		}
 		List<UUID> orderedIds = orderedIdPage.getContent();
-		Map<UUID, Post> postsById = postRepository.findAdminPostsByIdIn(orderedIds)
+		UUID labId = actor.lab().getId();
+		Map<UUID, Post> postsById = postRepository.findPendingAdminPostsByIdIn(labId, orderedIds)
 				.stream()
 				.collect(Collectors.toMap(Post::getId, Function.identity(), (left, right) -> left));
 		if (!postsById.keySet().containsAll(orderedIds)) {

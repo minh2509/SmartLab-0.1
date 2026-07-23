@@ -333,7 +333,7 @@ class AdminPostServiceTests {
 		verify(postRepository).findPendingAdminPostIds(
 				org.mockito.Mockito.eq(lab.getId()),
 				pageableCaptor.capture());
-		verify(postRepository, never()).findAdminPostsByIdIn(any());
+		verify(postRepository, never()).findPendingAdminPostsByIdIn(any(), any());
 		assertEquals(0, pageableCaptor.getValue().getPageNumber());
 		assertEquals(20, pageableCaptor.getValue().getPageSize());
 		assertEquals(0, response.page());
@@ -394,7 +394,7 @@ class AdminPostServiceTests {
 		PageRequest pageable = PageRequest.of(1, 2);
 		when(postRepository.findPendingAdminPostIds(any(), any(Pageable.class)))
 				.thenReturn(new PageImpl<>(List.of(secondId, firstId), pageable, 7));
-		when(postRepository.findAdminPostsByIdIn(List.of(secondId, firstId)))
+		when(postRepository.findPendingAdminPostsByIdIn(lab.getId(), List.of(secondId, firstId)))
 				.thenReturn(List.of(firstPost, secondPost));
 
 		var response = service.listPendingPosts(new AdminPostService.ListPendingAdminPostsQuery(
@@ -403,7 +403,7 @@ class AdminPostServiceTests {
 				2));
 
 		verify(postRepository).findPendingAdminPostIds(org.mockito.Mockito.eq(lab.getId()), any(Pageable.class));
-		verify(postRepository).findAdminPostsByIdIn(List.of(secondId, firstId));
+		verify(postRepository).findPendingAdminPostsByIdIn(lab.getId(), List.of(secondId, firstId));
 		assertEquals(2, response.content().size());
 		assertEquals(secondId, response.content().get(0).id());
 		assertEquals(firstId, response.content().get(1).id());
@@ -423,7 +423,7 @@ class AdminPostServiceTests {
 		PageRequest pageable = PageRequest.of(0, 2);
 		when(postRepository.findPendingAdminPostIds(any(), any(Pageable.class)))
 				.thenReturn(new PageImpl<>(List.of(firstId, secondId), pageable, 2));
-		when(postRepository.findAdminPostsByIdIn(List.of(firstId, secondId)))
+		when(postRepository.findPendingAdminPostsByIdIn(lab.getId(), List.of(firstId, secondId)))
 				.thenReturn(List.of(post(lab, firstId)));
 
 		IllegalStateException exception = assertThrows(

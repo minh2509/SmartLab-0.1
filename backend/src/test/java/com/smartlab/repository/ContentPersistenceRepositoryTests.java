@@ -78,7 +78,7 @@ class ContentPersistenceRepositoryTests {
 						Pageable.class),
 				Page.class);
 		assertReturnType(
-				PostRepository.class.getMethod("findAdminPostsByIdIn", Collection.class),
+				PostRepository.class.getMethod("findPendingAdminPostsByIdIn", UUID.class, Collection.class),
 				List.class);
 	}
 
@@ -164,10 +164,16 @@ class ContentPersistenceRepositoryTests {
 		assertTrue(idQuery.countQuery().contains("post.moderation_status = 'PENDING_REVIEW'"));
 		assertFalse(idQuery.countQuery().contains("post_moderation_logs"));
 
-		Method fetchMethod = PostRepository.class.getMethod("findAdminPostsByIdIn", Collection.class);
+		Method fetchMethod = PostRepository.class.getMethod("findPendingAdminPostsByIdIn", UUID.class, Collection.class);
 		Query fetchQuery = fetchMethod.getAnnotation(Query.class);
 		EntityGraph entityGraph = fetchMethod.getAnnotation(EntityGraph.class);
-		assertTrue(fetchQuery.value().contains("select post from Post post where post.id in :ids"));
+		assertTrue(fetchQuery.value().contains("select post"));
+		assertTrue(fetchQuery.value().contains("from Post post"));
+		assertTrue(fetchQuery.value().contains("post.lab.id = :labId"));
+		assertTrue(fetchQuery.value().contains("post.deletedAt is null"));
+		assertTrue(fetchQuery.value().contains(
+				"post.moderationStatus = com.smartlab.enums.PostStatus.PENDING_REVIEW"));
+		assertTrue(fetchQuery.value().contains("post.id in :ids"));
 		assertEquals(
 				List.of("author", "project", "category", "coverFile"),
 				List.of(entityGraph.attributePaths()));
