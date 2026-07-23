@@ -45,7 +45,7 @@ public class ProjectMember {
 	@Column(name = "member_status", nullable = false, length = 30)
 	private ProjectMemberStatus memberStatus = ProjectMemberStatus.ACTIVE;
 
-	@Column(name = "joined_at", nullable = false, insertable = false, updatable = false)
+	@Column(name = "joined_at", nullable = false)
 	private OffsetDateTime joinedAt;
 
 	@Column(name = "left_at")

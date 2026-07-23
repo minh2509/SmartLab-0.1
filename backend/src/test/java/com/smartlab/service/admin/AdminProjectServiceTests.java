@@ -1,6 +1,7 @@
 package com.smartlab.service.admin;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -13,6 +14,7 @@ import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -31,6 +33,7 @@ import com.smartlab.entity.ProjectMember;
 import com.smartlab.entity.ProjectResearchField;
 import com.smartlab.entity.ResearchField;
 import com.smartlab.entity.User;
+import com.smartlab.enums.CatalogStatus;
 import com.smartlab.enums.ProjectMemberRole;
 import com.smartlab.enums.ProjectMemberStatus;
 import com.smartlab.enums.ProjectStatus;
@@ -238,6 +241,53 @@ class AdminProjectServiceTests {
 				InvalidAdminServiceInputException.class,
 				() -> service.createProject(actorUserId, command));
 		verify(projectRepository, never()).save(any());
+	}
+
+	@Test
+	void createProjectSetsJoinedAtForNewLeaderMembership() {
+		UUID actorUserId = UUID.randomUUID();
+		UUID leaderId = UUID.randomUUID();
+		Lab lab = lab();
+		User actorUser = user(lab, actorUserId, UserAccountStatus.ACTIVE);
+		User leader = user(lab, leaderId, UserAccountStatus.ACTIVE);
+		ResearchField field = new ResearchField();
+		field.setId(UUID.randomUUID());
+		field.setCode("AI");
+		field.setStatus(CatalogStatus.ACTIVE);
+		when(rolePolicy.requireAdminActor(actorUserId))
+				.thenReturn(new AdminRolePolicy.ActorContext(actorUser, Set.of("ADMIN")));
+		when(researchFieldRepository.findByCodeIn(List.of("AI"))).thenReturn(List.of(field));
+		when(userRepository.findByIdInAndLabAndAccountStatus(
+				List.of(leaderId), lab, UserAccountStatus.ACTIVE))
+				.thenReturn(List.of(leader));
+		when(rolePolicy.activeRoleCodesByUserId(List.of(leader)))
+				.thenReturn(Map.of(leaderId, List.of("LEADER")));
+		when(projectRepository.save(any(Project.class))).thenAnswer(invocation -> {
+			Project project = invocation.getArgument(0);
+			project.setId(UUID.randomUUID());
+			return project;
+		});
+
+		service.createProject(actorUserId, new AdminProjectService.ProjectCommand(
+				"PRJ-001",
+				"Project",
+				"Description",
+				"Objective",
+				ProjectType.RESEARCH,
+				List.of("AI"),
+				List.of(leaderId),
+				LocalDate.of(2026, 1, 1),
+				LocalDate.of(2027, 1, 1),
+				ProjectStatus.PROPOSED,
+				0,
+				ProjectVisibility.PUBLIC));
+
+		@SuppressWarnings("unchecked")
+		ArgumentCaptor<List<ProjectMember>> memberships =
+				ArgumentCaptor.forClass((Class<List<ProjectMember>>) (Class<?>) List.class);
+		verify(projectMemberRepository).saveAll(memberships.capture());
+		assertEquals(1, memberships.getValue().size());
+		assertNotNull(memberships.getValue().getFirst().getJoinedAt());
 	}
 
 	private static AdminProjectService.ProjectFilter filter(String fieldCode) {

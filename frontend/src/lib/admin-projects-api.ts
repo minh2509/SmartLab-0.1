@@ -136,7 +136,7 @@ export function adminProjectErrorMessage(
     return "Your session has expired. Sign in again to load projects.";
   }
   if (error instanceof ApiError && error.status === 403) {
-    return "Your account is not allowed to view Admin projects.";
+    return error.message;
   }
   return error instanceof Error ? error.message : fallback;
 }
@@ -282,4 +282,126 @@ export function useAdminProjectDetail(
   }, [enabled, projectId, revision, token]);
 
   return { ...state, retry };
+}
+export type AdminProjectMember = {
+  membershipId: string;
+  userId: string;
+  fullName: string;
+  email: string;
+  projectRole: "PROJECT_LEADER" | "PROJECT_MEMBER";
+  memberStatus: "ACTIVE" | "REMOVED" | "LEFT";
+  joinedAt: string;
+  leftAt: string | null;
+};
+
+function normalizeAdminProjectMember(value: unknown): AdminProjectMember {
+  if (!isRecord(value)) throw new Error("The backend returned an invalid project member.");
+  const projectRole = readString(value, "projectRole");
+  const memberStatus = readString(value, "memberStatus");
+  if (projectRole !== "PROJECT_LEADER" && projectRole !== "PROJECT_MEMBER") {
+    throw new Error("The backend returned an invalid project member role.");
+  }
+  if (memberStatus !== "ACTIVE" && memberStatus !== "REMOVED" && memberStatus !== "LEFT") {
+    throw new Error("The backend returned an invalid project member status.");
+  }
+  const leftAt = value.leftAt;
+  if (leftAt !== null && typeof leftAt !== "string") {
+    throw new Error("The backend returned an invalid project member leftAt.");
+  }
+  return {
+    membershipId: readString(value, "membershipId"),
+    userId: readString(value, "userId"),
+    fullName: readString(value, "fullName"),
+    email: readString(value, "email"),
+    projectRole,
+    memberStatus,
+    joinedAt: readString(value, "joinedAt"),
+    leftAt,
+  };
+}
+
+export function useAdminProjectMembers(
+  token: string | null,
+  projectId: string,
+  enabled: boolean,
+) {
+  const [state, setState] = useState<RequestState<AdminProjectMember[]>>({
+    data: [],
+    loading: enabled,
+    error: null,
+  });
+  const [revision, setRevision] = useState(0);
+  const retry = useCallback(() => setRevision((value) => value + 1), []);
+
+  useEffect(() => {
+    if (!enabled || !token || !projectId) {
+      setState({ data: [], loading: false, error: null });
+      return;
+    }
+    let current = true;
+    setState((previous) => ({ ...previous, loading: true, error: null }));
+    void apiRequest(`/api/admin/projects/${projectId}/members?memberStatus=ACTIVE`, { token })
+      .then((value) => {
+        if (!Array.isArray(value)) throw new Error("The backend returned an invalid member list.");
+        if (current) {
+          setState({ data: value.map(normalizeAdminProjectMember), loading: false, error: null });
+        }
+      })
+      .catch((error: unknown) => {
+        if (current) {
+          setState({
+            data: [],
+            loading: false,
+            error: adminProjectErrorMessage(error, "Project members could not be loaded."),
+          });
+        }
+      });
+    return () => {
+      current = false;
+    };
+  }, [enabled, projectId, revision, token]);
+
+  return { ...state, retry };
+}
+
+export async function addAdminProjectMember(
+  token: string,
+  projectId: string,
+  userId: string,
+  role: AdminProjectMember["projectRole"],
+) {
+  return normalizeAdminProjectMember(
+    await apiRequest(`/api/admin/projects/${projectId}/members`, {
+      token,
+      body: { userId, role },
+    }),
+  );
+}
+
+export async function updateAdminProjectMemberRole(
+  token: string,
+  projectId: string,
+  userId: string,
+  role: AdminProjectMember["projectRole"],
+) {
+  return normalizeAdminProjectMember(
+    await apiRequest(`/api/admin/projects/${projectId}/members/${userId}/role`, {
+      token,
+      method: "PATCH",
+      body: { role },
+    }),
+  );
+}
+
+export async function removeAdminProjectMember(
+  token: string,
+  projectId: string,
+  userId: string,
+) {
+  return normalizeAdminProjectMember(
+    await apiRequest(`/api/admin/projects/${projectId}/members/${userId}/remove`, {
+      token,
+      method: "PATCH",
+    }),
+  );
 }
