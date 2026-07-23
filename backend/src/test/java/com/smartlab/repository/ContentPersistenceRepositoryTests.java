@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.lang.reflect.Method;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -70,6 +71,15 @@ class ContentPersistenceRepositoryTests {
 						PostVisibility.class,
 						Pageable.class),
 				Page.class);
+		assertReturnType(
+				PostRepository.class.getMethod(
+						"findPendingAdminPostIds",
+						UUID.class,
+						Pageable.class),
+				Page.class);
+		assertReturnType(
+				PostRepository.class.getMethod("findAdminPostsByIdIn", Collection.class),
+				List.class);
 	}
 
 	@Test
@@ -118,6 +128,46 @@ class ContentPersistenceRepositoryTests {
 		assertTrue(query.countQuery().contains(":authorId is null or post.author.id = :authorId"));
 		assertTrue(query.countQuery().contains(":projectId is null or post.project.id = :projectId"));
 		assertTrue(query.countQuery().contains(":visibility is null or post.visibility = :visibility"));
+		assertEquals(
+				List.of("author", "project", "category", "coverFile"),
+				List.of(entityGraph.attributePaths()));
+	}
+
+	@Test
+	void adminPendingPostQueueUsesPostgresOrderedIdQueryAndEntityGraphFetch() throws NoSuchMethodException {
+		Method idMethod = PostRepository.class.getMethod(
+				"findPendingAdminPostIds",
+				UUID.class,
+				Pageable.class);
+		Query idQuery = idMethod.getAnnotation(Query.class);
+
+		assertTrue(idQuery.nativeQuery());
+		assertTrue(idQuery.value().contains("select post.id"));
+		assertTrue(idQuery.value().contains("from posts post"));
+		assertTrue(idQuery.value().contains("left join ("));
+		assertTrue(idQuery.value().contains("select log.post_id, max(log.created_at) as latest_submitted_at"));
+		assertTrue(idQuery.value().contains("from post_moderation_logs log"));
+		assertTrue(idQuery.value().contains("where log.action = 'SUBMIT'"));
+		assertTrue(idQuery.value().contains("group by log.post_id"));
+		assertTrue(idQuery.value().contains("latest_submit on latest_submit.post_id = post.id"));
+		assertTrue(idQuery.value().contains("post.lab_id = :labId"));
+		assertTrue(idQuery.value().contains("post.deleted_at is null"));
+		assertTrue(idQuery.value().contains("post.moderation_status = 'PENDING_REVIEW'"));
+		assertTrue(idQuery.value().contains(
+				"order by latest_submit.latest_submitted_at asc nulls last, post.id asc"));
+		assertFalse(idQuery.value().contains("post.created_at"));
+		assertFalse(idQuery.value().contains("post.updated_at"));
+		assertTrue(idQuery.countQuery().contains("select count(*)"));
+		assertTrue(idQuery.countQuery().contains("from posts post"));
+		assertTrue(idQuery.countQuery().contains("post.lab_id = :labId"));
+		assertTrue(idQuery.countQuery().contains("post.deleted_at is null"));
+		assertTrue(idQuery.countQuery().contains("post.moderation_status = 'PENDING_REVIEW'"));
+		assertFalse(idQuery.countQuery().contains("post_moderation_logs"));
+
+		Method fetchMethod = PostRepository.class.getMethod("findAdminPostsByIdIn", Collection.class);
+		Query fetchQuery = fetchMethod.getAnnotation(Query.class);
+		EntityGraph entityGraph = fetchMethod.getAnnotation(EntityGraph.class);
+		assertTrue(fetchQuery.value().contains("select post from Post post where post.id in :ids"));
 		assertEquals(
 				List.of("author", "project", "category", "coverFile"),
 				List.of(entityGraph.attributePaths()));
