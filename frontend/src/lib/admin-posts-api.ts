@@ -24,8 +24,8 @@ export type AdminPostSummary = {
   contentType: AdminPostContentType;
   visibility: AdminPostVisibility;
   moderationStatus: AdminPostStatus;
-  authorId: string;
-  authorName: string;
+  authorId: string | null;
+  authorName: string | null;
   projectId: string | null;
   projectName: string | null;
   categoryId: string | null;
@@ -345,8 +345,8 @@ function normalizePost(value: unknown): AdminPostSummary {
     contentType: asAdminPostContentType(readString(value, "contentType")),
     visibility: asAdminPostVisibility(readString(value, "visibility")),
     moderationStatus: asAdminPostStatus(readString(value, "moderationStatus")),
-    authorId: readString(value, "authorId"),
-    authorName: readString(value, "authorName"),
+    authorId: readNullableString(value, "authorId"),
+    authorName: readNullableString(value, "authorName"),
     projectId: readNullableString(value, "projectId"),
     projectName: readNullableString(value, "projectName"),
     categoryId: readNullableString(value, "categoryId"),
@@ -479,6 +479,22 @@ function normalizePage(value: unknown): AdminPostPage {
   };
 }
 
+function requireLabAnnouncementPage(page: AdminPostPage) {
+  if (page.content.some((post) => post.contentType !== "LAB_ANNOUNCEMENT")) {
+    throw new Error(
+      "The backend returned a non-lab-announcement post in the lab announcements page.",
+    );
+  }
+  return page;
+}
+
+function requireLabAnnouncementDetail(detail: AdminPostDetail) {
+  if (detail.contentType !== "LAB_ANNOUNCEMENT") {
+    throw new Error("The backend returned a non-lab-announcement post detail.");
+  }
+  return detail;
+}
+
 export function adminPostStatusTone(status: AdminPostStatus): StatusPillTone {
   if (status === "PUBLISHED" || status === "APPROVED") return "emerald";
   if (status === "PENDING_REVIEW") return "amber";
@@ -533,6 +549,21 @@ export async function approveAdminPost(token: string, postId: string) {
       token,
       method: "POST",
     }),
+  );
+}
+
+export async function fetchAdminLabAnnouncements(token: string, page: number, size: number) {
+  const params = new URLSearchParams({ page: String(page), size: String(size) });
+  return requireLabAnnouncementPage(
+    normalizePage(await apiRequest(`/api/admin/lab-announcements?${params.toString()}`, { token })),
+  );
+}
+
+export async function fetchAdminLabAnnouncementDetail(token: string, postId: string) {
+  return requireLabAnnouncementDetail(
+    normalizeDetail(
+      await apiRequest(`/api/admin/lab-announcements/${encodeURIComponent(postId)}`, { token }),
+    ),
   );
 }
 
@@ -627,6 +658,62 @@ export function useAdminPostDetail(token: string | null, postId: string | null, 
             data: null,
             loading: false,
             error: adminPostErrorMessage(error, "Post details could not be loaded."),
+          });
+      });
+    return () => {
+      current = false;
+    };
+  }, [enabled, postId, revision, token]);
+
+  return { ...state, retry };
+}
+
+export function useAdminLabAnnouncements(
+  token: string | null,
+  enabled: boolean,
+  page = 0,
+  size = 10,
+) {
+  return useAdminPostPage(
+    token,
+    enabled,
+    page,
+    size,
+    fetchAdminLabAnnouncements,
+    "Lab announcements could not be loaded.",
+  );
+}
+
+export function useAdminLabAnnouncementDetail(
+  token: string | null,
+  postId: string | null,
+  enabled: boolean,
+) {
+  const [state, setState] = useState<RequestState<AdminPostDetail | null>>({
+    data: null,
+    loading: enabled,
+    error: null,
+  });
+  const [revision, setRevision] = useState(0);
+  const retry = useCallback(() => setRevision((value) => value + 1), []);
+
+  useEffect(() => {
+    if (!enabled || !token || !postId) {
+      setState({ data: null, loading: false, error: null });
+      return;
+    }
+    let current = true;
+    setState((previous) => ({ ...previous, loading: true, error: null }));
+    void fetchAdminLabAnnouncementDetail(token, postId)
+      .then((data) => {
+        if (current) setState({ data, loading: false, error: null });
+      })
+      .catch((error: unknown) => {
+        if (current)
+          setState({
+            data: null,
+            loading: false,
+            error: adminPostErrorMessage(error, "Lab announcement details could not be loaded."),
           });
       });
     return () => {

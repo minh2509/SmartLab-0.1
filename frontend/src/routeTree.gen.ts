@@ -28,8 +28,10 @@ import { Route as AppProjectsSlugRouteImport } from './routes/app.projects_.$slu
 import { Route as AppPostsNewRouteImport } from './routes/app.posts.new'
 import { Route as AppModerationPostsRouteImport } from './routes/app.moderation.posts'
 import { Route as AppAdminUsersRouteImport } from './routes/app.admin.users'
+import { Route as AppAdminLabAnnouncementsRouteImport } from './routes/app.admin.lab-announcements'
 import { Route as AppPostsPostIdEditRouteImport } from './routes/app.posts_.$postId.edit'
 import { Route as AppModerationPostsPostIdRouteImport } from './routes/app.moderation.posts_.$postId'
+import { Route as AppAdminLabAnnouncementsPostIdRouteImport } from './routes/app.admin.lab-announcements_.$postId'
 
 const ProjectsRoute = ProjectsRouteImport.update({
   id: '/projects',
@@ -126,6 +128,12 @@ const AppAdminUsersRoute = AppAdminUsersRouteImport.update({
   path: '/admin/users',
   getParentRoute: () => AppRoute,
 } as any)
+const AppAdminLabAnnouncementsRoute =
+  AppAdminLabAnnouncementsRouteImport.update({
+    id: '/admin/lab-announcements',
+    path: '/admin/lab-announcements',
+    getParentRoute: () => AppRoute,
+  } as any)
 const AppPostsPostIdEditRoute = AppPostsPostIdEditRouteImport.update({
   id: '/posts_/$postId/edit',
   path: '/posts/$postId/edit',
@@ -135,6 +143,12 @@ const AppModerationPostsPostIdRoute =
   AppModerationPostsPostIdRouteImport.update({
     id: '/moderation/posts_/$postId',
     path: '/moderation/posts/$postId',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAdminLabAnnouncementsPostIdRoute =
+  AppAdminLabAnnouncementsPostIdRouteImport.update({
+    id: '/admin/lab-announcements_/$postId',
+    path: '/admin/lab-announcements/$postId',
     getParentRoute: () => AppRoute,
   } as any)
 
@@ -154,10 +168,12 @@ export interface FileRoutesByFullPath {
   '/app/tasks': typeof AppTasksRoute
   '/posts/$slug': typeof PostsSlugRoute
   '/projects/$slug': typeof ProjectsSlugRoute
+  '/app/admin/lab-announcements': typeof AppAdminLabAnnouncementsRoute
   '/app/admin/users': typeof AppAdminUsersRoute
   '/app/moderation/posts': typeof AppModerationPostsRoute
   '/app/posts/new': typeof AppPostsNewRoute
   '/app/projects/$slug': typeof AppProjectsSlugRoute
+  '/app/admin/lab-announcements/$postId': typeof AppAdminLabAnnouncementsPostIdRoute
   '/app/moderation/posts/$postId': typeof AppModerationPostsPostIdRoute
   '/app/posts/$postId/edit': typeof AppPostsPostIdEditRoute
 }
@@ -177,10 +193,12 @@ export interface FileRoutesByTo {
   '/app/tasks': typeof AppTasksRoute
   '/posts/$slug': typeof PostsSlugRoute
   '/projects/$slug': typeof ProjectsSlugRoute
+  '/app/admin/lab-announcements': typeof AppAdminLabAnnouncementsRoute
   '/app/admin/users': typeof AppAdminUsersRoute
   '/app/moderation/posts': typeof AppModerationPostsRoute
   '/app/posts/new': typeof AppPostsNewRoute
   '/app/projects/$slug': typeof AppProjectsSlugRoute
+  '/app/admin/lab-announcements/$postId': typeof AppAdminLabAnnouncementsPostIdRoute
   '/app/moderation/posts/$postId': typeof AppModerationPostsPostIdRoute
   '/app/posts/$postId/edit': typeof AppPostsPostIdEditRoute
 }
@@ -201,10 +219,12 @@ export interface FileRoutesById {
   '/app/tasks': typeof AppTasksRoute
   '/posts_/$slug': typeof PostsSlugRoute
   '/projects_/$slug': typeof ProjectsSlugRoute
+  '/app/admin/lab-announcements': typeof AppAdminLabAnnouncementsRoute
   '/app/admin/users': typeof AppAdminUsersRoute
   '/app/moderation/posts': typeof AppModerationPostsRoute
   '/app/posts/new': typeof AppPostsNewRoute
   '/app/projects_/$slug': typeof AppProjectsSlugRoute
+  '/app/admin/lab-announcements_/$postId': typeof AppAdminLabAnnouncementsPostIdRoute
   '/app/moderation/posts_/$postId': typeof AppModerationPostsPostIdRoute
   '/app/posts_/$postId/edit': typeof AppPostsPostIdEditRoute
 }
@@ -226,10 +246,12 @@ export interface FileRouteTypes {
     | '/app/tasks'
     | '/posts/$slug'
     | '/projects/$slug'
+    | '/app/admin/lab-announcements'
     | '/app/admin/users'
     | '/app/moderation/posts'
     | '/app/posts/new'
     | '/app/projects/$slug'
+    | '/app/admin/lab-announcements/$postId'
     | '/app/moderation/posts/$postId'
     | '/app/posts/$postId/edit'
   fileRoutesByTo: FileRoutesByTo
@@ -249,10 +271,12 @@ export interface FileRouteTypes {
     | '/app/tasks'
     | '/posts/$slug'
     | '/projects/$slug'
+    | '/app/admin/lab-announcements'
     | '/app/admin/users'
     | '/app/moderation/posts'
     | '/app/posts/new'
     | '/app/projects/$slug'
+    | '/app/admin/lab-announcements/$postId'
     | '/app/moderation/posts/$postId'
     | '/app/posts/$postId/edit'
   id:
@@ -272,10 +296,12 @@ export interface FileRouteTypes {
     | '/app/tasks'
     | '/posts_/$slug'
     | '/projects_/$slug'
+    | '/app/admin/lab-announcements'
     | '/app/admin/users'
     | '/app/moderation/posts'
     | '/app/posts/new'
     | '/app/projects_/$slug'
+    | '/app/admin/lab-announcements_/$postId'
     | '/app/moderation/posts_/$postId'
     | '/app/posts_/$postId/edit'
   fileRoutesById: FileRoutesById
@@ -425,6 +451,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAdminUsersRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/admin/lab-announcements': {
+      id: '/app/admin/lab-announcements'
+      path: '/admin/lab-announcements'
+      fullPath: '/app/admin/lab-announcements'
+      preLoaderRoute: typeof AppAdminLabAnnouncementsRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/app/posts_/$postId/edit': {
       id: '/app/posts_/$postId/edit'
       path: '/posts/$postId/edit'
@@ -437,6 +470,13 @@ declare module '@tanstack/react-router' {
       path: '/moderation/posts/$postId'
       fullPath: '/app/moderation/posts/$postId'
       preLoaderRoute: typeof AppModerationPostsPostIdRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/admin/lab-announcements_/$postId': {
+      id: '/app/admin/lab-announcements_/$postId'
+      path: '/admin/lab-announcements/$postId'
+      fullPath: '/app/admin/lab-announcements/$postId'
+      preLoaderRoute: typeof AppAdminLabAnnouncementsPostIdRouteImport
       parentRoute: typeof AppRoute
     }
   }
@@ -463,9 +503,11 @@ interface AppRouteChildren {
   AppPostsRoute: typeof AppPostsRouteWithChildren
   AppProjectsRoute: typeof AppProjectsRoute
   AppTasksRoute: typeof AppTasksRoute
+  AppAdminLabAnnouncementsRoute: typeof AppAdminLabAnnouncementsRoute
   AppAdminUsersRoute: typeof AppAdminUsersRoute
   AppModerationPostsRoute: typeof AppModerationPostsRoute
   AppProjectsSlugRoute: typeof AppProjectsSlugRoute
+  AppAdminLabAnnouncementsPostIdRoute: typeof AppAdminLabAnnouncementsPostIdRoute
   AppModerationPostsPostIdRoute: typeof AppModerationPostsPostIdRoute
   AppPostsPostIdEditRoute: typeof AppPostsPostIdEditRoute
 }
@@ -479,9 +521,11 @@ const AppRouteChildren: AppRouteChildren = {
   AppPostsRoute: AppPostsRouteWithChildren,
   AppProjectsRoute: AppProjectsRoute,
   AppTasksRoute: AppTasksRoute,
+  AppAdminLabAnnouncementsRoute: AppAdminLabAnnouncementsRoute,
   AppAdminUsersRoute: AppAdminUsersRoute,
   AppModerationPostsRoute: AppModerationPostsRoute,
   AppProjectsSlugRoute: AppProjectsSlugRoute,
+  AppAdminLabAnnouncementsPostIdRoute: AppAdminLabAnnouncementsPostIdRoute,
   AppModerationPostsPostIdRoute: AppModerationPostsPostIdRoute,
   AppPostsPostIdEditRoute: AppPostsPostIdEditRoute,
 }
