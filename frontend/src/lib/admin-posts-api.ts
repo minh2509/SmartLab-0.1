@@ -46,6 +46,82 @@ export type AdminPostPage = {
   last: boolean;
 };
 
+export type AdminPostAuthor = {
+  id: string;
+  fullName: string;
+};
+
+export type AdminPostRelation = {
+  id: string;
+  name: string;
+};
+
+export type AdminPostFile = {
+  id: string;
+  originalName: string;
+  mimeType: string;
+  fileSize: number;
+  fileExtension: string;
+  createdAt: string;
+};
+
+export type AdminPostAttachment = {
+  attachmentId: string;
+  fileId: string | null;
+  originalName: string | null;
+  mimeType: string | null;
+  fileSize: number | null;
+  fileExtension: string | null;
+  uploadedById: string | null;
+  uploadedByName: string | null;
+  createdAt: string;
+};
+
+export type AdminPostModerationAction =
+  "CREATE" | "SUBMIT" | "APPROVE" | "REQUEST_REVISION" | "REJECT" | "PUBLISH" | "UNPUBLISH";
+
+export type AdminPostModerationHistory = {
+  id: string;
+  action: AdminPostModerationAction;
+  fromStatus: AdminPostStatus | null;
+  toStatus: AdminPostStatus | null;
+  actorId: string | null;
+  actorName: string | null;
+  reason: string | null;
+  createdAt: string;
+};
+
+export type AdminPostDetail = {
+  id: string;
+  title: string;
+  slug: string;
+  summary: string | null;
+  content: string | null;
+  contentType: AdminPostContentType;
+  visibility: AdminPostVisibility;
+  moderationStatus: AdminPostStatus;
+  author: AdminPostAuthor | null;
+  project: AdminPostRelation | null;
+  category: AdminPostRelation | null;
+  coverFile: AdminPostFile | null;
+  attachments: AdminPostAttachment[];
+  moderationHistory: AdminPostModerationHistory[];
+  publishedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AdminPostApproveResponse = {
+  postId: string;
+  action: "APPROVE";
+  fromStatus: "PENDING_REVIEW";
+  toStatus: "APPROVED";
+  moderationStatus: "APPROVED";
+  reviewedById: string | null;
+  reviewedByName: string | null;
+  reviewedAt: string;
+};
+
 type RequestState<T> = { data: T; loading: boolean; error: string | null };
 type StatusPillTone = "neutral" | "cyan" | "emerald" | "violet" | "amber" | "rose";
 
@@ -125,6 +201,16 @@ const visibilities: readonly AdminPostVisibility[] = [
   "PRIVATE",
 ];
 
+const moderationActions: readonly AdminPostModerationAction[] = [
+  "CREATE",
+  "SUBMIT",
+  "APPROVE",
+  "REQUEST_REVISION",
+  "REJECT",
+  "PUBLISH",
+  "UNPUBLISH",
+];
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
@@ -141,6 +227,30 @@ function readNullableString(value: unknown, field: string) {
     throw new Error(`The backend returned an invalid post ${field}.`);
   }
   return typeof value[field] === "string" ? value[field] : null;
+}
+
+function readNumber(value: unknown, field: string) {
+  if (!isRecord(value) || typeof value[field] !== "number" || !Number.isFinite(value[field])) {
+    throw new Error(`The backend returned an invalid post ${field}.`);
+  }
+  return value[field];
+}
+
+function readNullableNumber(value: unknown, field: string) {
+  if (!isRecord(value) || (value[field] !== null && typeof value[field] !== "number")) {
+    throw new Error(`The backend returned an invalid post ${field}.`);
+  }
+  if (typeof value[field] === "number" && !Number.isFinite(value[field])) {
+    throw new Error(`The backend returned an invalid post ${field}.`);
+  }
+  return typeof value[field] === "number" ? value[field] : null;
+}
+
+function readArray(value: unknown, field: string) {
+  if (!isRecord(value) || !Array.isArray(value[field])) {
+    throw new Error(`The backend returned an invalid post ${field}.`);
+  }
+  return value[field];
 }
 
 function readPageNumber(value: unknown, field: string, minimum: number) {
@@ -179,18 +289,51 @@ function readNullableTimestamp(value: unknown, field: string) {
 }
 
 function asAdminPostStatus(value: string): AdminPostStatus {
-  if (statuses.includes(value as AdminPostStatus)) return value as AdminPostStatus;
+  for (const status of statuses) {
+    if (value === status) return status;
+  }
   throw new Error("The backend returned an unsupported post moderation status.");
 }
 
+function asNullableAdminPostStatus(value: unknown, field: string): AdminPostStatus | null {
+  if (value === null) return null;
+  if (typeof value !== "string") {
+    throw new Error(`The backend returned an invalid post ${field}.`);
+  }
+  return asAdminPostStatus(value);
+}
+
 function asAdminPostContentType(value: string): AdminPostContentType {
-  if (contentTypes.includes(value as AdminPostContentType)) return value as AdminPostContentType;
+  for (const contentType of contentTypes) {
+    if (value === contentType) return contentType;
+  }
   throw new Error("The backend returned an unsupported post content type.");
 }
 
 function asAdminPostVisibility(value: string): AdminPostVisibility {
-  if (visibilities.includes(value as AdminPostVisibility)) return value as AdminPostVisibility;
+  for (const visibility of visibilities) {
+    if (value === visibility) return visibility;
+  }
   throw new Error("The backend returned an unsupported post visibility.");
+}
+
+function asAdminPostModerationAction(value: string): AdminPostModerationAction {
+  for (const action of moderationActions) {
+    if (value === action) return action;
+  }
+  throw new Error("The backend returned an unsupported post moderation action.");
+}
+
+function readOptionalRecord(value: unknown, field: string) {
+  if (!isRecord(value)) {
+    throw new Error(`The backend returned an invalid post ${field}.`);
+  }
+  const entry = value[field];
+  if (entry === undefined || entry === null) return null;
+  if (!isRecord(entry)) {
+    throw new Error(`The backend returned an invalid post ${field}.`);
+  }
+  return entry;
 }
 
 function normalizePost(value: unknown): AdminPostSummary {
@@ -212,6 +355,112 @@ function normalizePost(value: unknown): AdminPostSummary {
     publishedAt: readNullableTimestamp(value, "publishedAt"),
     createdAt: readTimestamp(value, "createdAt"),
     updatedAt: readTimestamp(value, "updatedAt"),
+  };
+}
+
+function normalizeAuthor(value: unknown): AdminPostAuthor {
+  return {
+    id: readString(value, "id"),
+    fullName: readString(value, "fullName"),
+  };
+}
+
+function normalizeRelation(value: unknown): AdminPostRelation {
+  return {
+    id: readString(value, "id"),
+    name: readString(value, "name"),
+  };
+}
+
+function normalizeFile(value: unknown): AdminPostFile {
+  return {
+    id: readString(value, "id"),
+    originalName: readString(value, "originalName"),
+    mimeType: readString(value, "mimeType"),
+    fileSize: readNumber(value, "fileSize"),
+    fileExtension: readString(value, "fileExtension"),
+    createdAt: readTimestamp(value, "createdAt"),
+  };
+}
+
+function normalizeAttachment(value: unknown): AdminPostAttachment {
+  return {
+    attachmentId: readString(value, "attachmentId"),
+    fileId: readNullableString(value, "fileId"),
+    originalName: readNullableString(value, "originalName"),
+    mimeType: readNullableString(value, "mimeType"),
+    fileSize: readNullableNumber(value, "fileSize"),
+    fileExtension: readNullableString(value, "fileExtension"),
+    uploadedById: readNullableString(value, "uploadedById"),
+    uploadedByName: readNullableString(value, "uploadedByName"),
+    createdAt: readTimestamp(value, "createdAt"),
+  };
+}
+
+function normalizeModerationHistory(value: unknown): AdminPostModerationHistory {
+  if (!isRecord(value)) {
+    throw new Error("The backend returned an invalid post moderationHistory.");
+  }
+  return {
+    id: readString(value, "id"),
+    action: asAdminPostModerationAction(readString(value, "action")),
+    fromStatus: asNullableAdminPostStatus(value.fromStatus, "fromStatus"),
+    toStatus: asNullableAdminPostStatus(value.toStatus, "toStatus"),
+    actorId: readNullableString(value, "actorId"),
+    actorName: readNullableString(value, "actorName"),
+    reason: readNullableString(value, "reason"),
+    createdAt: readTimestamp(value, "createdAt"),
+  };
+}
+
+function normalizeDetail(value: unknown): AdminPostDetail {
+  const author = readOptionalRecord(value, "author");
+  const project = readOptionalRecord(value, "project");
+  const category = readOptionalRecord(value, "category");
+  const coverFile = readOptionalRecord(value, "coverFile");
+  return {
+    id: readString(value, "id"),
+    title: readString(value, "title"),
+    slug: readString(value, "slug"),
+    summary: readNullableString(value, "summary"),
+    content: readNullableString(value, "content"),
+    contentType: asAdminPostContentType(readString(value, "contentType")),
+    visibility: asAdminPostVisibility(readString(value, "visibility")),
+    moderationStatus: asAdminPostStatus(readString(value, "moderationStatus")),
+    author: author ? normalizeAuthor(author) : null,
+    project: project ? normalizeRelation(project) : null,
+    category: category ? normalizeRelation(category) : null,
+    coverFile: coverFile ? normalizeFile(coverFile) : null,
+    attachments: readArray(value, "attachments").map(normalizeAttachment),
+    moderationHistory: readArray(value, "moderationHistory").map(normalizeModerationHistory),
+    publishedAt: readNullableTimestamp(value, "publishedAt"),
+    createdAt: readTimestamp(value, "createdAt"),
+    updatedAt: readTimestamp(value, "updatedAt"),
+  };
+}
+
+function normalizeApproveResponse(value: unknown): AdminPostApproveResponse {
+  const action = readString(value, "action");
+  const fromStatus = readString(value, "fromStatus");
+  const toStatus = readString(value, "toStatus");
+  const moderationStatus = readString(value, "moderationStatus");
+  if (
+    action !== "APPROVE" ||
+    fromStatus !== "PENDING_REVIEW" ||
+    toStatus !== "APPROVED" ||
+    moderationStatus !== "APPROVED"
+  ) {
+    throw new Error("The backend returned an invalid post approval response.");
+  }
+  return {
+    postId: readString(value, "postId"),
+    action,
+    fromStatus,
+    toStatus,
+    moderationStatus,
+    reviewedById: readNullableString(value, "reviewedById"),
+    reviewedByName: readNullableString(value, "reviewedByName"),
+    reviewedAt: readTimestamp(value, "reviewedAt"),
   };
 }
 
@@ -251,6 +500,12 @@ export function adminPostErrorMessage(
   if (error instanceof ApiError && error.status === 403) {
     return "Admin access denied for post moderation.";
   }
+  if (error instanceof ApiError && error.status === 404) {
+    return "Post not found. It may have been removed or is outside your lab.";
+  }
+  if (error instanceof ApiError && error.status === 409) {
+    return error.message;
+  }
   return error instanceof Error ? error.message : fallback;
 }
 
@@ -263,6 +518,21 @@ export async function fetchPendingAdminPosts(token: string, page: number, size: 
   const params = new URLSearchParams({ page: String(page), size: String(size) });
   return normalizePage(
     await apiRequest(`/api/admin/posts/pending?${params.toString()}`, { token }),
+  );
+}
+
+export async function fetchAdminPostDetail(token: string, postId: string) {
+  return normalizeDetail(
+    await apiRequest(`/api/admin/posts/${encodeURIComponent(postId)}`, { token }),
+  );
+}
+
+export async function approveAdminPost(token: string, postId: string) {
+  return normalizeApproveResponse(
+    await apiRequest(`/api/admin/posts/${encodeURIComponent(postId)}/approve`, {
+      token,
+      method: "POST",
+    }),
   );
 }
 
@@ -329,4 +599,40 @@ export function usePendingAdminPosts(token: string | null, enabled: boolean, pag
     fetchPendingAdminPosts,
     "Pending moderation posts could not be loaded.",
   );
+}
+
+export function useAdminPostDetail(token: string | null, postId: string | null, enabled: boolean) {
+  const [state, setState] = useState<RequestState<AdminPostDetail | null>>({
+    data: null,
+    loading: enabled,
+    error: null,
+  });
+  const [revision, setRevision] = useState(0);
+  const retry = useCallback(() => setRevision((value) => value + 1), []);
+
+  useEffect(() => {
+    if (!enabled || !token || !postId) {
+      setState({ data: null, loading: false, error: null });
+      return;
+    }
+    let current = true;
+    setState((previous) => ({ ...previous, loading: true, error: null }));
+    void fetchAdminPostDetail(token, postId)
+      .then((data) => {
+        if (current) setState({ data, loading: false, error: null });
+      })
+      .catch((error: unknown) => {
+        if (current)
+          setState({
+            data: null,
+            loading: false,
+            error: adminPostErrorMessage(error, "Post details could not be loaded."),
+          });
+      });
+    return () => {
+      current = false;
+    };
+  }, [enabled, postId, revision, token]);
+
+  return { ...state, retry };
 }

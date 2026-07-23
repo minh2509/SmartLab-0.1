@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { ShieldCheck } from "lucide-react";
 import { EmptyState, PageHeader, Panel, StatusPill } from "@/components/app/ui";
 import {
@@ -180,12 +180,13 @@ function PostRows({ posts }: { posts: AdminPostSummary[] }) {
                 {post.categoryName ? <span>{post.categoryName}</span> : null}
               </div>
             </div>
-            <span
-              aria-disabled="true"
-              className="shrink-0 cursor-not-allowed rounded-md border border-hairline px-3 py-1.5 text-xs font-medium text-ink-soft opacity-70"
+            <Link
+              to="/app/moderation/posts/$postId"
+              params={{ postId: post.id }}
+              className="shrink-0 rounded-md border border-hairline px-3 py-1.5 text-xs font-medium text-ink hover:bg-muted"
             >
-              Detail pending
-            </span>
+              Review
+            </Link>
           </div>
         </article>
       ))}
