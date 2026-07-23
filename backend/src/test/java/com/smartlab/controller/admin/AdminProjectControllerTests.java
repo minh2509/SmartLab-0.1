@@ -7,6 +7,10 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -20,6 +24,7 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableHandlerMethodArgumentResolver;
+import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
@@ -121,6 +126,67 @@ class AdminProjectControllerTests {
 				.andExpect(jsonPath("$.message").value("Request validation failed."));
 
 		verify(adminProjectService, never()).getProjectDetail(any(), any());
+	}
+
+	@Test
+	void projectCommandEndpointsExposePr3MutationContract() throws Exception {
+		UUID actorUserId = UUID.randomUUID();
+		UUID projectId = UUID.randomUUID();
+		UUID leaderId = UUID.randomUUID();
+		AdminProjectService.ProjectSummary summary = projectSummary(projectId, leaderId, UUID.randomUUID());
+		when(actorResolver.requireActorUserId()).thenReturn(actorUserId);
+		when(adminProjectService.createProject(any(), any())).thenReturn(summary);
+		when(adminProjectService.updateProject(any(), any(), any())).thenReturn(summary);
+		when(adminProjectService.updateStatus(any(), any(), any())).thenReturn(summary);
+		when(adminProjectService.updateProgress(any(), any(), any())).thenReturn(summary);
+		when(adminProjectService.replaceResearchFields(any(), any(), any())).thenReturn(summary);
+		when(adminProjectService.replaceLeaders(any(), any(), any())).thenReturn(summary);
+		String saveBody = """
+				{
+				  "code": "NL-24-07",
+				  "name": "Atlas",
+				  "description": "Description",
+				  "objective": "Objective",
+				  "type": "Research",
+				  "fields": ["ai"],
+				  "leaderIds": ["%s"],
+				  "startDate": "2024-03-04",
+				  "expectedEnd": "2026-12-15",
+				  "status": "Planning",
+				  "progress": 10,
+				  "visibility": "internal"
+				}
+				""".formatted(leaderId);
+
+		mockMvc.perform(post("/api/admin/projects")
+					.contentType(MediaType.APPLICATION_JSON)
+					.content(saveBody))
+				.andExpect(status().isCreated())
+				.andExpect(jsonPath("$.id").value(projectId.toString()));
+		mockMvc.perform(put("/api/admin/projects/{projectId}", projectId)
+					.contentType(MediaType.APPLICATION_JSON)
+					.content(saveBody))
+				.andExpect(status().isOk());
+		mockMvc.perform(patch("/api/admin/projects/{projectId}/status", projectId)
+					.contentType(MediaType.APPLICATION_JSON)
+					.content("{\"status\":\"Active\"}"))
+				.andExpect(status().isOk());
+		mockMvc.perform(patch("/api/admin/projects/{projectId}/progress", projectId)
+					.contentType(MediaType.APPLICATION_JSON)
+					.content("{\"progress\":75}"))
+				.andExpect(status().isOk());
+		mockMvc.perform(put("/api/admin/projects/{projectId}/research-fields", projectId)
+					.contentType(MediaType.APPLICATION_JSON)
+					.content("{\"fields\":[\"ai\",\"robotics\"]}"))
+				.andExpect(status().isOk());
+		mockMvc.perform(put("/api/admin/projects/{projectId}/leaders", projectId)
+					.contentType(MediaType.APPLICATION_JSON)
+					.content("{\"leaderIds\":[\"%s\"]}".formatted(leaderId)))
+				.andExpect(status().isOk());
+		mockMvc.perform(delete("/api/admin/projects/{projectId}", projectId))
+				.andExpect(status().isNoContent());
+
+		verify(adminProjectService).deleteProject(actorUserId, projectId);
 	}
 
 	private static AdminProjectService.ProjectSummary projectSummary(

@@ -1,7 +1,13 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { useAuth } from "@/lib/auth";
-import { useAdminProjects } from "@/lib/admin-projects-api";
+import {
+  adminProjectErrorMessage,
+  createAdminProject,
+  deleteAdminProject,
+  updateAdminProject,
+  useAdminProjects,
+} from "@/lib/admin-projects-api";
 import {
   useProjects,
   fieldMeta,
@@ -12,7 +18,8 @@ import {
 } from "@/lib/projects-data";
 import { PageHeader, Panel, StatusPill, EmptyState } from "@/components/app/ui";
 import { ProjectEditDialog } from "@/components/app/projects/ProjectEditDialog";
-import { Pencil, Trash2, ExternalLink, Search } from "lucide-react";
+import { DeleteProjectDialog } from "@/components/app/projects/DeleteProjectDialog";
+import { Pencil, Trash2, ExternalLink, Plus, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { notifyOnce } from "@/lib/notifications-data";
 
@@ -30,6 +37,9 @@ function AppProjectsIndex() {
   const [status, setStatus] = useState<"all" | ProjectStatus>("all");
   const [page, setPage] = useState(0);
   const [editing, setEditing] = useState<Project | null>(null);
+  const [deleting, setDeleting] = useState<Project | null>(null);
+  const [mutationPending, setMutationPending] = useState(false);
+  const [mutationError, setMutationError] = useState<string | null>(null);
 
   const userId = user?.id ?? "";
   const isAdmin = activeRole === "admin" && Boolean(user?.roles.includes("admin"));
@@ -81,9 +91,16 @@ function AppProjectsIndex() {
         }
         action={
           isAdmin ? (
-            <span className="rounded-md border border-hairline bg-surface-elev px-3 py-1.5 text-xs text-ink-soft">
-              Database - read only
-            </span>
+            <button
+              type="button"
+              onClick={() => {
+                setMutationError(null);
+                setEditing(newProjectDraft());
+              }}
+              className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90"
+            >
+              <Plus className="h-3.5 w-3.5" /> Create project
+            </button>
           ) : undefined
         }
       />
@@ -232,32 +249,38 @@ function AppProjectsIndex() {
                           <ExternalLink className="h-3.5 w-3.5" /> Open
                         </Link>
                         <button
-                          disabled={isAdmin || !canEdit(p)}
-                          onClick={() => !isAdmin && canEdit(p) && setEditing(p)}
+                          disabled={!canEdit(p)}
+                          onClick={() => {
+                            if (!canEdit(p)) return;
+                            setMutationError(null);
+                            setEditing(p);
+                          }}
                           className={cn(
                             "inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs",
-                            !isAdmin && canEdit(p)
+                            canEdit(p)
                               ? "text-ink-soft hover:bg-muted hover:text-ink"
                               : "cursor-not-allowed text-ink-soft/40",
                           )}
                           title={
-                            isAdmin
-                              ? "Editing will be connected in PR3"
-                              : canEdit(p)
-                                ? "Edit project"
-                                : "Only assigned leaders or admins can edit"
+                            canEdit(p) ? "Edit project" : "Only assigned leaders or admins can edit"
                           }
                         >
                           <Pencil className="h-3.5 w-3.5" /> Edit
                         </button>
                         <button
-                          disabled
-                          className="inline-flex cursor-not-allowed items-center gap-1 rounded-md px-2 py-1 text-xs text-ink-soft/40"
-                          title={
+                          disabled={!isAdmin}
+                          onClick={() => {
+                            if (!isAdmin) return;
+                            setMutationError(null);
+                            setDeleting(p);
+                          }}
+                          className={cn(
+                            "inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs",
                             isAdmin
-                              ? "Deletion will be connected in PR3"
-                              : "Only administrators can delete"
-                          }
+                              ? "text-ink-soft hover:bg-muted hover:text-[color:var(--destructive)]"
+                              : "cursor-not-allowed text-ink-soft/40",
+                          )}
+                          title={isAdmin ? "Delete project" : "Only administrators can delete"}
                         >
                           <Trash2 className="h-3.5 w-3.5" /> Delete
                         </button>
@@ -303,8 +326,34 @@ function AppProjectsIndex() {
         open={!!editing}
         onClose={() => setEditing(null)}
         canEditLeaders={isAdmin}
+        accessToken={isAdmin ? accessToken : null}
+        pending={mutationPending}
+        serverError={mutationError}
         onSave={(patch) => {
           if (editing) {
+            if (isAdmin) {
+              if (!accessToken) {
+                setMutationError("Your session has expired. Sign in again to save this project.");
+                return;
+              }
+              setMutationPending(true);
+              setMutationError(null);
+              const candidate = { ...editing, ...patch };
+              void (
+                editing.id
+                  ? updateAdminProject(accessToken, candidate)
+                  : createAdminProject(accessToken, candidate)
+              )
+                .then(() => {
+                  setEditing(null);
+                  adminProjects.retry();
+                })
+                .catch((error: unknown) => {
+                  setMutationError(adminProjectErrorMessage(error));
+                })
+                .finally(() => setMutationPending(false));
+              return;
+            }
             if (patch.memberIds) {
               patch.memberIds
                 .filter((memberId) => !editing.memberIds.includes(memberId))
@@ -324,8 +373,59 @@ function AppProjectsIndex() {
           setEditing(null);
         }}
       />
+      <DeleteProjectDialog
+        project={deleting}
+        open={!!deleting}
+        pending={mutationPending}
+        error={mutationError}
+        onClose={() => {
+          if (mutationPending) return;
+          setDeleting(null);
+          setMutationError(null);
+        }}
+        onConfirm={() => {
+          if (!deleting || !accessToken) {
+            setMutationError("Your session has expired. Sign in again to delete this project.");
+            return;
+          }
+          setMutationPending(true);
+          setMutationError(null);
+          void deleteAdminProject(accessToken, deleting.id)
+            .then(() => {
+              setDeleting(null);
+              if (adminProjects.data.items.length === 1 && page > 0) setPage(page - 1);
+              else adminProjects.retry();
+            })
+            .catch((error: unknown) => setMutationError(adminProjectErrorMessage(error)))
+            .finally(() => setMutationPending(false));
+        }}
+      />
     </>
   );
+}
+
+function newProjectDraft(): Project {
+  const start = new Date();
+  const expectedEnd = new Date(start);
+  expectedEnd.setFullYear(expectedEnd.getFullYear() + 1);
+  const isoDate = (value: Date) => value.toISOString().slice(0, 10);
+  return {
+    id: "",
+    slug: "",
+    code: "",
+    name: "",
+    description: "",
+    objective: "",
+    type: "Research",
+    fields: [],
+    leaderIds: [],
+    memberIds: [],
+    startDate: isoDate(start),
+    expectedEnd: isoDate(expectedEnd),
+    status: "Planning",
+    progress: 0,
+    visibility: "internal",
+  };
 }
 
 function MiniStat({

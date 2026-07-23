@@ -42,7 +42,10 @@ import com.smartlab.exception.ResourceNotFoundException;
 import com.smartlab.repository.ProjectMemberRepository;
 import com.smartlab.repository.ProjectRepository;
 import com.smartlab.repository.ProjectResearchFieldRepository;
+import com.smartlab.repository.ResearchFieldRepository;
+import com.smartlab.repository.UserRepository;
 import com.smartlab.service.common.BusinessValidationService;
+import com.smartlab.service.common.SlugService;
 
 class AdminProjectServiceTests {
 
@@ -50,13 +53,18 @@ class AdminProjectServiceTests {
 	private final ProjectResearchFieldRepository projectResearchFieldRepository =
 			mock(ProjectResearchFieldRepository.class);
 	private final ProjectMemberRepository projectMemberRepository = mock(ProjectMemberRepository.class);
+	private final ResearchFieldRepository researchFieldRepository = mock(ResearchFieldRepository.class);
+	private final UserRepository userRepository = mock(UserRepository.class);
 	private final AdminRolePolicy rolePolicy = mock(AdminRolePolicy.class);
 	private final AdminProjectService service = new AdminProjectService(
 			projectRepository,
 			projectResearchFieldRepository,
 			projectMemberRepository,
+			researchFieldRepository,
+			userRepository,
 			rolePolicy,
-			new BusinessValidationService());
+			new BusinessValidationService(),
+			new SlugService());
 
 	@Test
 	void getProjectsScopesQueryToActorLabAndBulkLoadsFrontendAssociations() {
@@ -170,6 +178,66 @@ class AdminProjectServiceTests {
 						filter(null),
 						PageRequest.of(0, 20, Sort.by("unknown"))));
 		verify(projectRepository, never()).findAdminProjects(any(), any(), any(), any(), any(), any());
+	}
+
+	@Test
+	void updateProgressPersistsValidatedValueAndReturnsUpdatedSummary() {
+		UUID actorUserId = UUID.randomUUID();
+		Lab lab = lab();
+		Project project = project(lab);
+		when(rolePolicy.requireAdminActor(actorUserId)).thenReturn(actor(lab));
+		when(projectRepository.findByIdAndLabAndDeletedAtIsNull(project.getId(), lab))
+				.thenReturn(Optional.of(project));
+		when(projectRepository.save(project)).thenReturn(project);
+		when(projectResearchFieldRepository.findByProjectIn(List.of(project))).thenReturn(List.of());
+		when(projectMemberRepository.findByProjectInAndMemberStatus(List.of(project), ProjectMemberStatus.ACTIVE))
+				.thenReturn(List.of());
+
+		AdminProjectService.ProjectSummary result = service.updateProgress(actorUserId, project.getId(), 75);
+
+		assertEquals(75, project.getProgressPercent());
+		assertEquals(75, result.progress());
+		verify(projectRepository).save(project);
+	}
+
+	@Test
+	void deleteProjectSoftDeletesWithoutRemovingTheRecord() {
+		UUID actorUserId = UUID.randomUUID();
+		Lab lab = lab();
+		Project project = project(lab);
+		when(rolePolicy.requireAdminActor(actorUserId)).thenReturn(actor(lab));
+		when(projectRepository.findByIdAndLabAndDeletedAtIsNull(project.getId(), lab))
+				.thenReturn(Optional.of(project));
+
+		service.deleteProject(actorUserId, project.getId());
+
+		verify(projectRepository).save(project);
+		org.junit.jupiter.api.Assertions.assertNotNull(project.getDeletedAt());
+	}
+
+	@Test
+	void createProjectRejectsMissingRequiredDatesBeforeWritingAnything() {
+		UUID actorUserId = UUID.randomUUID();
+		Lab lab = lab();
+		when(rolePolicy.requireAdminActor(actorUserId)).thenReturn(actor(lab));
+		AdminProjectService.ProjectCommand command = new AdminProjectService.ProjectCommand(
+				"PRJ-001",
+				"Project",
+				"Description",
+				"Objective",
+				ProjectType.RESEARCH,
+				List.of("AI"),
+				List.of(UUID.randomUUID()),
+				null,
+				LocalDate.of(2027, 1, 1),
+				ProjectStatus.PROPOSED,
+				0,
+				ProjectVisibility.PUBLIC);
+
+		assertThrows(
+				InvalidAdminServiceInputException.class,
+				() -> service.createProject(actorUserId, command));
+		verify(projectRepository, never()).save(any());
 	}
 
 	private static AdminProjectService.ProjectFilter filter(String fieldCode) {

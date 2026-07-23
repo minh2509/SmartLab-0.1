@@ -1,7 +1,12 @@
 import { createFileRoute, Link, notFound } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth";
-import { useAdminProjectDetail, useAdminProjects } from "@/lib/admin-projects-api";
+import {
+  adminProjectErrorMessage,
+  updateAdminProject,
+  useAdminProjectDetail,
+  useAdminProjects,
+} from "@/lib/admin-projects-api";
 import {
   useProjects,
   fieldMeta,
@@ -36,6 +41,8 @@ function WorkspaceProjectDetail() {
   const { projects: localProjects, update, addMember } = useProjects();
   const { requests, approve, reject } = useJoinRequests();
   const [editing, setEditing] = useState(false);
+  const [mutationPending, setMutationPending] = useState(false);
+  const [mutationError, setMutationError] = useState<string | null>(null);
   const [reviewing, setReviewing] = useState<ProjectJoinRequest | null>(null);
   const [reviewMode, setReviewMode] = useState<"approve" | "reject">("approve");
   const [reviewError, setReviewError] = useState<string | null>(null);
@@ -91,7 +98,7 @@ function WorkspaceProjectDetail() {
     activeRole === "leader" && user.roles.includes("leader") && project.leaderIds.includes(user.id);
   const isAssignedLeader = user.roles.includes("leader") && project.leaderIds.includes(user.id);
   const isMember = project.memberIds.includes(user.id) || project.leaderIds.includes(user.id);
-  const canEdit = isLeader;
+  const canEdit = isAdmin || isLeader;
   const canView = isAdmin || isMember;
   const canReviewRequests =
     activeRole === "leader" && user.roles.includes("leader") && isAssignedLeader;
@@ -148,14 +155,17 @@ function WorkspaceProjectDetail() {
             </StatusPill>
             {canEdit ? (
               <button
-                onClick={() => setEditing(true)}
+                onClick={() => {
+                  setMutationError(null);
+                  setEditing(true);
+                }}
                 className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90"
               >
                 <Pencil className="h-3.5 w-3.5" /> Edit project
               </button>
             ) : (
               <span className="rounded-md border border-hairline px-2.5 py-1 text-[11px] text-ink-soft">
-                {isAdmin ? "Database - read only" : "Read only"}
+                Read only
               </span>
             )}
           </div>
@@ -251,7 +261,26 @@ function WorkspaceProjectDetail() {
         open={editing}
         onClose={() => setEditing(false)}
         canEditLeaders={isAdmin}
+        accessToken={isAdmin ? accessToken : null}
+        pending={mutationPending}
+        serverError={mutationError}
         onSave={(patch) => {
+          if (isAdmin) {
+            if (!accessToken) {
+              setMutationError("Your session has expired. Sign in again to save this project.");
+              return;
+            }
+            setMutationPending(true);
+            setMutationError(null);
+            void updateAdminProject(accessToken, { ...project, ...patch })
+              .then(() => {
+                setEditing(false);
+                adminProject.retry();
+              })
+              .catch((error: unknown) => setMutationError(adminProjectErrorMessage(error)))
+              .finally(() => setMutationPending(false));
+            return;
+          }
           if (patch.memberIds) {
             patch.memberIds
               .filter((memberId) => !project.memberIds.includes(memberId))

@@ -128,14 +128,54 @@ function normalizePage(value: unknown): AdminProjectPage {
   };
 }
 
-function errorMessage(error: unknown) {
+export function adminProjectErrorMessage(
+  error: unknown,
+  fallback = "The project request could not be completed.",
+) {
   if (error instanceof ApiError && error.status === 401) {
     return "Your session has expired. Sign in again to load projects.";
   }
   if (error instanceof ApiError && error.status === 403) {
     return "Your account is not allowed to view Admin projects.";
   }
-  return error instanceof Error ? error.message : "Projects could not be loaded.";
+  return error instanceof Error ? error.message : fallback;
+}
+
+function toSavePayload(project: Project) {
+  return {
+    code: project.code.trim(),
+    name: project.name.trim(),
+    description: project.description.trim(),
+    objective: project.objective.trim(),
+    type: project.type,
+    fields: project.fields,
+    leaderIds: project.leaderIds,
+    startDate: project.startDate || null,
+    expectedEnd: project.expectedEnd || null,
+    status: project.status,
+    progress: project.progress,
+    visibility: project.visibility,
+  };
+}
+
+export async function createAdminProject(token: string, project: Project) {
+  return normalizeProject(
+    await apiRequest("/api/admin/projects", { token, body: toSavePayload(project) }),
+  );
+}
+
+export async function updateAdminProject(token: string, project: Project) {
+  return normalizeProject(
+    await apiRequest(`/api/admin/projects/${project.id}`, {
+      token,
+      method: "PUT",
+      body: toSavePayload(project),
+    }),
+  );
+}
+
+export async function deleteAdminProject(token: string, projectId: string) {
+  await apiRequest(`/api/admin/projects/${projectId}`, { token, method: "DELETE" });
 }
 
 async function fetchAdminProjects(
@@ -184,7 +224,12 @@ export function useAdminProjects(
         if (current) setState({ data, loading: false, error: null });
       })
       .catch((error: unknown) => {
-        if (current) setState({ data: EMPTY_PAGE, loading: false, error: errorMessage(error) });
+        if (current)
+          setState({
+            data: EMPTY_PAGE,
+            loading: false,
+            error: adminProjectErrorMessage(error, "Projects could not be loaded."),
+          });
       });
     return () => {
       current = false;
@@ -224,7 +269,12 @@ export function useAdminProjectDetail(
         if (current) setState({ data, loading: false, error: null });
       })
       .catch((error: unknown) => {
-        if (current) setState({ data: null, loading: false, error: errorMessage(error) });
+        if (current)
+          setState({
+            data: null,
+            loading: false,
+            error: adminProjectErrorMessage(error, "Project details could not be loaded."),
+          });
       });
     return () => {
       current = false;
