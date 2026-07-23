@@ -15,6 +15,7 @@ import com.smartlab.dto.request.admin.CreateAdminUserRequest;
 import com.smartlab.dto.request.admin.ReplaceUserRolesRequest;
 import com.smartlab.dto.request.admin.UpdateAdminUserRequest;
 import com.smartlab.dto.response.admin.AdminPermissionResponse;
+import com.smartlab.dto.response.admin.AdminRoleCatalogResponse;
 import com.smartlab.dto.response.admin.AdminRoleResponse;
 import com.smartlab.dto.response.admin.AdminSystemRoleResponse;
 import com.smartlab.dto.response.admin.AdminUserResponse;
