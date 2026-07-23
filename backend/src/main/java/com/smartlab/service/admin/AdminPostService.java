@@ -19,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.smartlab.dto.response.admin.AdminPostDetailResponse;
 import com.smartlab.dto.response.admin.AdminPostModerationActionResponse;
 import com.smartlab.dto.response.admin.AdminPostPageResponse;
+import com.smartlab.entity.Lab;
 import com.smartlab.entity.Post;
 import com.smartlab.entity.PostModerationLog;
 import com.smartlab.enums.PostContentType;
@@ -77,7 +78,7 @@ public class AdminPostService {
 		int page = normalizedPage(query.page());
 		int size = normalizedSize(query.size());
 
-		return mapper.toPageResponse(postRepository.findAdminPosts(
+		return listPostsForActor(
 				actor.lab(),
 				normalizedKeywordPattern(query.keyword()),
 				query.status(),
@@ -85,7 +86,8 @@ public class AdminPostService {
 				query.authorId(),
 				query.projectId(),
 				query.visibility(),
-				PageRequest.of(page, size)));
+				page,
+				size);
 	}
 
 	@Transactional(readOnly = true)
@@ -124,6 +126,27 @@ public class AdminPostService {
 	}
 
 	@Transactional(readOnly = true)
+	public AdminPostPageResponse listLabAnnouncements(ListLabAnnouncementsQuery query) {
+		if (query == null) {
+			throw new InvalidAdminServiceInputException("List lab announcements query must not be null.");
+		}
+		AdminRolePolicy.ActorContext actor = rolePolicy.requireAdminActor(query.actorUserId());
+		int page = normalizedPage(query.page());
+		int size = normalizedSize(query.size());
+
+		return listPostsForActor(
+				actor.lab(),
+				null,
+				null,
+				PostContentType.LAB_ANNOUNCEMENT,
+				null,
+				null,
+				null,
+				page,
+				size);
+	}
+
+	@Transactional(readOnly = true)
 	public AdminPostDetailResponse getPostDetail(GetAdminPostDetailQuery query) {
 		if (query == null) {
 			throw new InvalidAdminServiceInputException("Get admin post detail query must not be null.");
@@ -134,6 +157,26 @@ public class AdminPostService {
 		}
 		Post post = postRepository.findAdminPostDetail(actor.lab().getId(), query.postId())
 				.orElseThrow(() -> new ResourceNotFoundException("Post was not found."));
+		return mapper.toDetailResponse(
+				post,
+				postAttachmentRepository.findVisibleAdminPostAttachments(post),
+				postModerationLogRepository.findAdminPostModerationHistory(post));
+	}
+
+	@Transactional(readOnly = true)
+	public AdminPostDetailResponse getLabAnnouncementDetail(GetAdminLabAnnouncementDetailQuery query) {
+		if (query == null) {
+			throw new InvalidAdminServiceInputException("Get admin lab announcement detail query must not be null.");
+		}
+		AdminRolePolicy.ActorContext actor = rolePolicy.requireAdminActor(query.actorUserId());
+		if (query.postId() == null) {
+			throw new InvalidAdminServiceInputException("Post ID must not be null.");
+		}
+		Post post = postRepository.findAdminPostDetail(actor.lab().getId(), query.postId())
+				.orElseThrow(() -> new ResourceNotFoundException("Post was not found."));
+		if (post.getContentType() != PostContentType.LAB_ANNOUNCEMENT) {
+			throw new ResourceNotFoundException("Post was not found.");
+		}
 		return mapper.toDetailResponse(
 				post,
 				postAttachmentRepository.findVisibleAdminPostAttachments(post),
@@ -221,6 +264,27 @@ public class AdminPostService {
 		return "%" + escapedKeyword + "%";
 	}
 
+	private AdminPostPageResponse listPostsForActor(
+			Lab lab,
+			String keywordPattern,
+			PostStatus status,
+			PostContentType contentType,
+			UUID authorId,
+			UUID projectId,
+			PostVisibility visibility,
+			int page,
+			int size) {
+		return mapper.toPageResponse(postRepository.findAdminPosts(
+				lab,
+				keywordPattern,
+				status,
+				contentType,
+				authorId,
+				projectId,
+				visibility,
+				PageRequest.of(page, size)));
+	}
+
 	public record ListAdminPostsQuery(
 			UUID actorUserId,
 			Integer page,
@@ -239,7 +303,18 @@ public class AdminPostService {
 			Integer size) {
 	}
 
+	public record ListLabAnnouncementsQuery(
+			UUID actorUserId,
+			Integer page,
+			Integer size) {
+	}
+
 	public record GetAdminPostDetailQuery(
+			UUID actorUserId,
+			UUID postId) {
+	}
+
+	public record GetAdminLabAnnouncementDetailQuery(
 			UUID actorUserId,
 			UUID postId) {
 	}

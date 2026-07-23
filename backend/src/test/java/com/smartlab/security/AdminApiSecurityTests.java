@@ -39,6 +39,7 @@ import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.security.oauth2.jwt.JwtEncoderParameters;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -56,6 +57,8 @@ import com.smartlab.dto.request.admin.CreateAdminUserRequest;
 import com.smartlab.enums.UserAccountStatus;
 import com.smartlab.exception.ApiExceptionHandler;
 import com.smartlab.mapper.AuthApiMapper;
+import com.smartlab.repository.LoginHistoryRepository;
+import com.smartlab.repository.UserRepository;
 
 import jakarta.validation.Valid;
 
@@ -81,6 +84,12 @@ class AdminApiSecurityTests {
 	@Autowired
 	private JwtEncoder jwtEncoder;
 
+	@MockitoBean
+	private UserRepository userRepository;
+
+	@MockitoBean
+	private LoginHistoryRepository loginHistoryRepository;
+
 	@Test
 	void actuatorHealthIsPublic() throws Exception {
 		mockMvc.perform(get("/actuator/health"))
@@ -99,7 +108,7 @@ class AdminApiSecurityTests {
 		mockMvc.perform(post("/api/auth/login")
 						.contentType(MediaType.APPLICATION_JSON)
 						.content("""
-								{"email":"admin@example.test","password":"wrong-password"}
+								{"email":"admin@example.edu","password":"wrong-password"}
 								"""))
 				.andExpect(status().isUnauthorized())
 				.andExpect(jsonPath("$.message").value("Invalid email or password."))
@@ -122,21 +131,73 @@ class AdminApiSecurityTests {
 	}
 
 	@Test
-	void usersWithAdminAccessPermissionCanAccessAdminApi() throws Exception {
-		mockMvc.perform(get("/api/admin/probe").with(httpBasic("super@example.edu", "password")))
+	void adminAccessPermissionOrAdminRolesCanAccessAdminApi() throws Exception {
+		mockMvc.perform(get("/api/admin/probe").header("Authorization", "Bearer " + loginToken("super@example.edu")))
 				.andExpect(status().isOk());
-		mockMvc.perform(get("/api/admin/probe").header("Authorization", "Bearer " + loginToken("admin@example.test")))
+		mockMvc.perform(get("/api/admin/probe").header("Authorization", "Bearer " + loginToken("admin@example.edu")))
+				.andExpect(status().isOk());
+		mockMvc.perform(get("/api/admin/probe")
+						.header("Authorization", "Bearer " + loginToken("admin-role-only@example.edu")))
 				.andExpect(status().isOk());
 	}
 
 	@Test
-	void usersWithoutAdminAccessPermissionReceiveJsonForbidden() throws Exception {
+	void adminLabAnnouncementListUsesExistingAdminAuthorizationRules() throws Exception {
+		mockMvc.perform(get("/api/admin/lab-announcements"))
+				.andExpect(status().isUnauthorized());
+		mockMvc.perform(get("/api/admin/lab-announcements")
+						.header("Authorization", "Bearer " + loginToken("leader@example.edu")))
+				.andExpect(status().isForbidden());
+		mockMvc.perform(get("/api/admin/lab-announcements")
+						.header("Authorization", "Bearer " + loginToken("member@example.edu")))
+				.andExpect(status().isForbidden());
+		mockMvc.perform(get("/api/admin/lab-announcements")
+						.header("Authorization", "Bearer " + loginToken("noroles@example.edu")))
+				.andExpect(status().isForbidden());
+		mockMvc.perform(get("/api/admin/lab-announcements")
+						.header("Authorization", "Bearer " + loginToken("admin@example.edu")))
+				.andExpect(status().isOk());
+		mockMvc.perform(get("/api/admin/lab-announcements")
+						.header("Authorization", "Bearer " + loginToken("admin-role-only@example.edu")))
+				.andExpect(status().isOk());
+		mockMvc.perform(get("/api/admin/lab-announcements")
+						.header("Authorization", "Bearer " + loginToken("super@example.edu")))
+				.andExpect(status().isOk());
+	}
+
+	@Test
+	void adminLabAnnouncementDetailUsesExistingAdminAuthorizationRules() throws Exception {
+		String path = "/api/admin/lab-announcements/00000000-0000-0000-0000-000000000066";
+
+		mockMvc.perform(get(path))
+				.andExpect(status().isUnauthorized());
+		mockMvc.perform(get(path)
+						.header("Authorization", "Bearer " + loginToken("leader@example.edu")))
+				.andExpect(status().isForbidden());
+		mockMvc.perform(get(path)
+						.header("Authorization", "Bearer " + loginToken("member@example.edu")))
+				.andExpect(status().isForbidden());
+		mockMvc.perform(get(path)
+						.header("Authorization", "Bearer " + loginToken("noroles@example.edu")))
+				.andExpect(status().isForbidden());
+		mockMvc.perform(get(path)
+						.header("Authorization", "Bearer " + loginToken("admin@example.edu")))
+				.andExpect(status().isOk());
+		mockMvc.perform(get(path)
+						.header("Authorization", "Bearer " + loginToken("admin-role-only@example.edu")))
+				.andExpect(status().isOk());
+		mockMvc.perform(get(path)
+						.header("Authorization", "Bearer " + loginToken("super@example.edu")))
+				.andExpect(status().isOk());
+	}
+
+	@Test
+	void usersWithoutAcceptedAdminAuthoritiesReceiveJsonForbidden() throws Exception {
 		for (String username : List.of(
-				"admin-role-only@example.edu",
 				"leader@example.edu",
 				"member@example.edu",
 				"noroles@example.edu")) {
-			mockMvc.perform(get("/api/admin/probe").with(httpBasic(username, "password")))
+			mockMvc.perform(get("/api/admin/probe").header("Authorization", "Bearer " + loginToken(username)))
 					.andExpect(status().isForbidden())
 					.andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
 					.andExpect(jsonPath("$.status").value(403))
@@ -157,7 +218,7 @@ class AdminApiSecurityTests {
 				.andExpect(jsonPath("$.message").value("Authentication is required."))
 				.andExpect(content().string(not(containsString("malformed-token"))));
 
-		String token = loginToken("admin@example.test");
+		String token = loginToken("admin@example.edu");
 		mockMvc.perform(get("/api/admin/probe").header("Authorization", "Bearer " + token + "tampered"))
 				.andExpect(status().isUnauthorized())
 				.andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON));
@@ -169,7 +230,7 @@ class AdminApiSecurityTests {
 
 	@Test
 	void httpBasicCredentialsNoLongerAuthenticateAdminApi() throws Exception {
-		mockMvc.perform(get("/api/admin/probe").with(httpBasic("admin@example.test", "password")))
+		mockMvc.perform(get("/api/admin/probe").with(httpBasic("admin@example.edu", "password")))
 				.andExpect(status().isUnauthorized())
 				.andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON));
 	}
@@ -179,15 +240,15 @@ class AdminApiSecurityTests {
 		mockMvc.perform(get("/api/probe"))
 				.andExpect(status().isUnauthorized())
 				.andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON));
-		mockMvc.perform(get("/api/probe").header("Authorization", "Bearer " + loginToken("member@example.test")))
+		mockMvc.perform(get("/api/probe").header("Authorization", "Bearer " + loginToken("member@example.edu")))
 				.andExpect(status().isOk());
 	}
 
 	@Test
 	void validTokenAccessesCurrentUserEndpoint() throws Exception {
-		mockMvc.perform(get("/api/auth/me").header("Authorization", "Bearer " + loginToken("admin@example.test")))
+		mockMvc.perform(get("/api/auth/me").header("Authorization", "Bearer " + loginToken("admin@example.edu")))
 				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.email").value("admin@example.test"))
+				.andExpect(jsonPath("$.email").value("admin@example.edu"))
 				.andExpect(jsonPath("$.accountStatus").value("ACTIVE"))
 				.andExpect(jsonPath("$.roles[0]").value("ADMIN"))
 				.andExpect(jsonPath("$.accessToken").doesNotExist())
@@ -196,7 +257,7 @@ class AdminApiSecurityTests {
 
 	@Test
 	void csrfIsIgnoredForRestApiMutationsButAuthenticationStillRequired() throws Exception {
-		String adminToken = loginToken("admin@example.test");
+		String adminToken = loginToken("admin@example.edu");
 		mockMvc.perform(post("/api/admin/probe")
 						.contentType(MediaType.APPLICATION_JSON)
 						.content("{}")
@@ -219,7 +280,7 @@ class AdminApiSecurityTests {
 
 	@Test
 	void bearerAuthenticationDoesNotCreateSessionCookie() throws Exception {
-		mockMvc.perform(get("/api/admin/probe").header("Authorization", "Bearer " + loginToken("admin@example.test")))
+		mockMvc.perform(get("/api/admin/probe").header("Authorization", "Bearer " + loginToken("admin@example.edu")))
 				.andExpect(status().isOk())
 				.andExpect(cookie().doesNotExist("JSESSIONID"));
 	}
@@ -253,7 +314,7 @@ class AdminApiSecurityTests {
 				.expiresAt(Instant.parse("2026-07-22T14:15:00Z"))
 				.id(UUID.randomUUID().toString())
 				.claim("lab_id", UUID.randomUUID().toString())
-				.claim("email", "admin@example.test")
+				.claim("email", "admin@example.edu")
 				.claim("full_name", "Admin User")
 				.claim("account_status", "ACTIVE")
 				.claim("roles", java.util.List.of("ADMIN"))
@@ -283,6 +344,16 @@ class AdminApiSecurityTests {
 		@GetMapping("/api/admin/posts/pending")
 		Map<String, String> pendingAdminPosts() {
 			return Map.of("ok", "admin-pending-posts");
+		}
+
+		@GetMapping("/api/admin/lab-announcements")
+		Map<String, String> adminLabAnnouncements() {
+			return Map.of("ok", "admin-lab-announcements");
+		}
+
+		@GetMapping("/api/admin/lab-announcements/{postId}")
+		Map<String, String> adminLabAnnouncementDetail() {
+			return Map.of("ok", "admin-lab-announcement-detail");
 		}
 
 		@GetMapping("/api/admin/posts/{postId}")

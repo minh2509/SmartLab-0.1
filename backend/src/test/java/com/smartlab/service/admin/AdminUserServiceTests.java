@@ -104,7 +104,7 @@ class AdminUserServiceTests {
 	}
 
 	@Test
-	void createManagedUserPassesOriginalTemporaryPasswordToEncoderWithoutTrimming() {
+	void createManagedUserTrimsSuppliedTemporaryPasswordBeforeEncodingAndReturningIt() {
 		Lab lab = lab(UUID.randomUUID());
 		User actor = user(UUID.randomUUID(), lab, "admin", "admin@example.edu", UserAccountStatus.ACTIVE);
 		Role adminRole = role(UUID.randomUUID(), AdminUserRoleService.ADMIN_ROLE_CODE);
@@ -117,9 +117,10 @@ class AdminUserServiceTests {
 				exactEncoder,
 				rolePolicy);
 		String originalPassword = "  TemporaryPass123!  ";
+		String trimmedPassword = "TemporaryPass123!";
 		stubActiveActor(actor, adminRole);
 		when(roleRepository.findByCodeIn(List.of(AdminUserRoleService.MEMBER_ROLE_CODE))).thenReturn(List.of(memberRole));
-		when(exactEncoder.encode(originalPassword)).thenReturn("encoded-original-password");
+		when(exactEncoder.encode(trimmedPassword)).thenReturn("encoded-trimmed-password");
 		when(userRepository.save(any(User.class))).thenAnswer(invocation -> {
 			User saved = invocation.getArgument(0);
 			saved.setId(UUID.randomUUID());
@@ -128,24 +129,27 @@ class AdminUserServiceTests {
 		when(userRoleRepository.findByUserAndRole(any(User.class), org.mockito.Mockito.eq(memberRole)))
 				.thenReturn(Optional.empty());
 
-		exactPasswordService.createManagedUser(new AdminUserService.CreateManagedUserCommand(
-				actor.getId(),
-				"minh",
-				"minh@example.edu",
-				originalPassword,
-				"Minh Hoang",
-				null,
-				List.of("MEMBER")));
+		AdminUserService.ManagedUserSummary created = exactPasswordService.createManagedUser(
+				new AdminUserService.CreateManagedUserCommand(
+						actor.getId(),
+						"minh",
+						"minh@example.edu",
+						originalPassword,
+						"Minh Hoang",
+						null,
+						List.of("MEMBER")));
 
-		verify(exactEncoder).encode(originalPassword);
+		verify(exactEncoder).encode(trimmedPassword);
 		ArgumentCaptor<User> userCaptor = ArgumentCaptor.forClass(User.class);
 		verify(userRepository).save(userCaptor.capture());
-		assertEquals("encoded-original-password", userCaptor.getValue().getPasswordHash());
+		assertEquals("encoded-trimmed-password", userCaptor.getValue().getPasswordHash());
 		assertFalse(originalPassword.equals(userCaptor.getValue().getPasswordHash()));
+		assertEquals(trimmedPassword, created.temporaryPassword());
+		assertFalse(created.temporaryPasswordGenerated());
 	}
 
 	@Test
-	void createManagedUserRejectsDuplicateEmailBlankTemporaryPasswordAndForbiddenRole() {
+	void createManagedUserRejectsDuplicateEmailShortTemporaryPasswordAndForbiddenRole() {
 		Lab lab = lab(UUID.randomUUID());
 		User actor = user(UUID.randomUUID(), lab, "admin", "admin@example.edu", UserAccountStatus.ACTIVE);
 		Role adminRole = role(UUID.randomUUID(), AdminUserRoleService.ADMIN_ROLE_CODE);
@@ -175,16 +179,6 @@ class AdminUserServiceTests {
 						null,
 						List.of("MEMBER"))));
 		assertThrows(
-				InvalidAdminServiceInputException.class,
-				() -> service.createManagedUser(new AdminUserService.CreateManagedUserCommand(
-						actor.getId(),
-						"blank-only",
-						"blank-only@example.edu",
-						"            ",
-						"Blank Only Password",
-						null,
-						List.of("MEMBER"))));
-		assertThrows(
 				ForbiddenAdminOperationException.class,
 				() -> service.createManagedUser(new AdminUserService.CreateManagedUserCommand(
 						actor.getId(),
@@ -195,6 +189,54 @@ class AdminUserServiceTests {
 						null,
 						List.of("ADMIN"))));
 		verify(userRepository, never()).save(any(User.class));
+	}
+
+	@Test
+	void createManagedUserGeneratesTemporaryPasswordForWhitespaceOnlyInput() {
+		Lab lab = lab(UUID.randomUUID());
+		User actor = user(UUID.randomUUID(), lab, "admin", "admin@example.edu", UserAccountStatus.ACTIVE);
+		Role adminRole = role(UUID.randomUUID(), AdminUserRoleService.ADMIN_ROLE_CODE);
+		Role memberRole = role(UUID.randomUUID(), AdminUserRoleService.MEMBER_ROLE_CODE);
+		PasswordEncoder exactEncoder = mock(PasswordEncoder.class);
+		AdminUserService exactPasswordService = new AdminUserService(
+				userRepository,
+				fileRepository,
+				userRoleRepository,
+				exactEncoder,
+				rolePolicy);
+		stubActiveActor(actor, adminRole);
+		when(roleRepository.findByCodeIn(List.of(AdminUserRoleService.MEMBER_ROLE_CODE))).thenReturn(List.of(memberRole));
+		when(exactEncoder.encode(any())).thenReturn("encoded-generated-password");
+		when(userRepository.save(any(User.class))).thenAnswer(invocation -> {
+			User saved = invocation.getArgument(0);
+			saved.setId(UUID.randomUUID());
+			return saved;
+		});
+		when(userRoleRepository.findByUserAndRole(any(User.class), org.mockito.Mockito.eq(memberRole)))
+				.thenReturn(Optional.empty());
+
+		AdminUserService.ManagedUserSummary created = exactPasswordService.createManagedUser(
+				new AdminUserService.CreateManagedUserCommand(
+						actor.getId(),
+						"blank-only",
+						"blank-only@example.edu",
+						"            ",
+						"Blank Only Password",
+						null,
+						List.of("MEMBER")));
+
+		ArgumentCaptor<String> passwordCaptor = ArgumentCaptor.forClass(String.class);
+		verify(exactEncoder).encode(passwordCaptor.capture());
+		String generatedPassword = passwordCaptor.getValue();
+		assertNotNull(generatedPassword);
+		assertFalse(generatedPassword.isBlank());
+		assertTrue(generatedPassword.length() >= 12);
+		assertTrue(generatedPassword.length() <= 72);
+		assertEquals(generatedPassword, created.temporaryPassword());
+		assertTrue(created.temporaryPasswordGenerated());
+		ArgumentCaptor<User> userCaptor = ArgumentCaptor.forClass(User.class);
+		verify(userRepository).save(userCaptor.capture());
+		assertEquals("encoded-generated-password", userCaptor.getValue().getPasswordHash());
 	}
 
 	@Test
@@ -370,7 +412,7 @@ class AdminUserServiceTests {
 	}
 
 	@Test
-	void serviceStructureUsesSpringTransactionsAndDoesNotExposePasswordFields() throws NoSuchMethodException {
+	void serviceStructureUsesSpringTransactionsAndExposesOnlySafeCredentialMetadata() throws NoSuchMethodException {
 		assertNotNull(AdminUserService.class.getAnnotation(Service.class));
 		assertTransactional("createManagedUser", AdminUserService.CreateManagedUserCommand.class, false);
 		assertTransactional("updateManagedUser", AdminUserService.UpdateManagedUserCommand.class, false);
@@ -378,8 +420,12 @@ class AdminUserServiceTests {
 		assertTransactional("findUserById", new Class<?>[] {UUID.class, UUID.class}, true);
 		assertTransactional("listUsers", new Class<?>[] {UUID.class, UserAccountStatus.class}, true);
 		assertFalse(Arrays.stream(AdminUserService.ManagedUserSummary.class.getRecordComponents())
-				.anyMatch(component -> component.getName().toLowerCase().contains("password")
+				.anyMatch(component -> component.getName().equals("passwordHash")
 						|| component.getName().toLowerCase().contains("hash")));
+		assertTrue(Arrays.stream(AdminUserService.ManagedUserSummary.class.getRecordComponents())
+				.anyMatch(component -> component.getName().equals("temporaryPassword")));
+		assertTrue(Arrays.stream(AdminUserService.ManagedUserSummary.class.getRecordComponents())
+				.anyMatch(component -> component.getName().equals("temporaryPasswordGenerated")));
 		assertTrue(Arrays.stream(AdminUserService.CreateManagedUserCommand.class.getRecordComponents())
 				.anyMatch(component -> component.getName().equals("temporaryPassword")));
 		assertFalse(Arrays.stream(AdminUserService.CreateManagedUserCommand.class.getRecordComponents())

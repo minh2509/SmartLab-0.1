@@ -13,12 +13,16 @@ import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.context.annotation.Profile;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.smartlab.dto.request.admin.CreateAdminUserRequest;
 import com.smartlab.dto.request.admin.ReplaceUserRolesRequest;
 import com.smartlab.dto.request.admin.UpdateAdminUserRequest;
+import com.smartlab.dto.response.admin.AdminPostPageResponse;
+import com.smartlab.dto.response.admin.AdminPostDetailResponse;
+import com.smartlab.dto.response.admin.AdminPostModerationActionResponse;
 import com.smartlab.dto.response.admin.AdminPermissionResponse;
 import com.smartlab.dto.response.admin.AdminRoleCatalogResponse;
 import com.smartlab.dto.response.admin.AdminRoleResponse;
@@ -34,10 +38,10 @@ class AdminApiStructureTests {
 	@Test
 	void controllersAreRestAdaptersWithoutRepositoryDependenciesAndInactiveInNodb() {
 		assertControllerBoundary(AdminPostController.class);
+		assertControllerBoundary(AdminLabAnnouncementController.class);
 		assertControllerBoundary(AdminUserController.class);
 		assertControllerBoundary(AdminRoleController.class);
 		assertControllerBoundary(AdminUserRoleController.class);
-		assertControllerBoundary(AdminRoleController.class);
 	}
 
 	@Test
@@ -98,6 +102,35 @@ class AdminApiStructureTests {
 		assertNotNull(postMapping);
 		assertEquals(List.of("/{postId}/approve"), List.of(postMapping.value()));
 		assertEquals(AdminPostModerationActionResponse.class, approveMethod.getReturnType());
+	}
+
+	@Test
+	void adminLabAnnouncementRouteReturnsExistingSafePageDto() throws NoSuchMethodException {
+		Method listMethod = AdminLabAnnouncementController.class.getMethod(
+				"listLabAnnouncements",
+				Integer.class,
+				Integer.class);
+		GetMapping getMapping = listMethod.getAnnotation(GetMapping.class);
+
+		assertNotNull(getMapping);
+		assertEquals(List.of(), List.of(getMapping.value()));
+		assertEquals(AdminPostPageResponse.class, listMethod.getReturnType());
+		assertNoCredentialComponent(AdminPostPageResponse.class);
+		assertNoEntityComponent(AdminPostPageResponse.class);
+	}
+
+	@Test
+	void adminLabAnnouncementDetailRouteReturnsExistingSafeDetailDto() throws NoSuchMethodException {
+		Method detailMethod = AdminLabAnnouncementController.class.getMethod(
+				"getLabAnnouncementDetail",
+				UUID.class);
+		GetMapping getMapping = detailMethod.getAnnotation(GetMapping.class);
+
+		assertNotNull(getMapping);
+		assertEquals(List.of("/{postId}"), List.of(getMapping.value()));
+		assertEquals(AdminPostDetailResponse.class, detailMethod.getReturnType());
+		assertNoCredentialComponent(AdminPostDetailResponse.class);
+		assertNoEntityComponent(AdminPostDetailResponse.class);
 	}
 
 	private static void assertControllerBoundary(Class<?> controllerType) {
