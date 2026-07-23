@@ -20,6 +20,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.smartlab.dto.request.admin.CreateAdminNotificationRequest;
 import com.smartlab.dto.response.admin.AdminNotificationDetailResponse;
+import com.smartlab.dto.response.admin.AdminNotificationFilterOptionsResponse;
 import com.smartlab.dto.response.admin.AdminNotificationResponse;
 import com.smartlab.dto.response.admin.PageResponse;
 import com.smartlab.security.AdminJwtClaims;
@@ -62,6 +63,25 @@ public class AdminNotificationController {
 				result.getSize(),
 				result.getTotalElements(),
 				result.getTotalPages());
+	}
+
+	@GetMapping("/options")
+	public AdminNotificationFilterOptionsResponse getFilterOptions(
+			@AuthenticationPrincipal Jwt jwt) {
+		AdminNotificationService.NotificationFilterOptions options =
+				adminNotificationService.getFilterOptions(AdminJwtClaims.labId(jwt));
+		return new AdminNotificationFilterOptionsResponse(
+				options.notificationTypes(),
+				options.creatableNotificationTypes(),
+				options.relatedTypes(),
+				options.creators()
+						.stream()
+						.map(creator -> new AdminNotificationFilterOptionsResponse.CreatorOption(
+								creator.id(),
+								creator.fullName(),
+								creator.email(),
+								creator.accountStatus()))
+						.toList());
 	}
 
 	@GetMapping("/{notificationId}")

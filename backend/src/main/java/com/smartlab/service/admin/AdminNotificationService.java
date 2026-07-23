@@ -2,9 +2,12 @@ package com.smartlab.service.admin;
 
 import java.time.Clock;
 import java.time.OffsetDateTime;
+import java.util.Arrays;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 
 import org.springframework.context.annotation.Profile;
@@ -15,7 +18,9 @@ import org.springframework.transaction.annotation.Transactional;
 import com.smartlab.entity.Notification;
 import com.smartlab.entity.NotificationRecipient;
 import com.smartlab.entity.User;
+import com.smartlab.enums.NotificationRelatedType;
 import com.smartlab.enums.NotificationTargetType;
+import com.smartlab.enums.UserAccountStatus;
 import com.smartlab.exception.InvalidAdminServiceInputException;
 import com.smartlab.exception.ResourceNotFoundException;
 import com.smartlab.repository.NotificationRecipientRepository;
@@ -30,6 +35,7 @@ public class AdminNotificationService {
 
 	private static final int MAX_PAGE_SIZE = 100;
 	private static final String AUDIT_ENTITY_TYPE = "NOTIFICATION";
+	private static final List<String> CREATABLE_NOTIFICATION_TYPES = List.of("ADMIN_ANNOUNCEMENT");
 
 	private final NotificationRepository notificationRepository;
 	private final NotificationRecipientRepository recipientRepository;
@@ -73,6 +79,49 @@ public class AdminNotificationService {
 				page,
 				size)
 				.map(this::toSummary);
+	}
+
+	@Transactional(readOnly = true)
+	public NotificationFilterOptions getFilterOptions(UUID labId) {
+		if (labId == null) {
+			throw new InvalidAdminServiceInputException("Lab ID must not be null.");
+		}
+		AdminNotificationReadRepository.NotificationFilterLookup lookup =
+				notificationReadRepository.findFilterOptions(labId);
+		List<String> notificationTypes = lookup.notificationTypes()
+				.stream()
+				.map(AdminNotificationService::normalizeOptional)
+				.filter(Objects::nonNull)
+				.distinct()
+				.sorted()
+				.toList();
+		Map<UUID, CreatorOption> creatorsById = new LinkedHashMap<>();
+		for (User creator : lookup.creators()) {
+			if (creator != null
+					&& creator.getId() != null
+					&& creator.getLab() != null
+					&& labId.equals(creator.getLab().getId())) {
+				creatorsById.putIfAbsent(
+						creator.getId(),
+						new CreatorOption(
+								creator.getId(),
+								creator.getFullName(),
+								creator.getEmail(),
+								creator.getAccountStatus()));
+			}
+		}
+		List<CreatorOption> creators = creatorsById.values()
+				.stream()
+				.sorted(Comparator
+						.comparing(CreatorOption::fullName, String.CASE_INSENSITIVE_ORDER)
+						.thenComparing(CreatorOption::email, String.CASE_INSENSITIVE_ORDER)
+						.thenComparing(CreatorOption::id))
+				.toList();
+		return new NotificationFilterOptions(
+				notificationTypes,
+				CREATABLE_NOTIFICATION_TYPES,
+				Arrays.stream(NotificationRelatedType.values()).map(Enum::name).toList(),
+				creators);
 	}
 
 	@Transactional(readOnly = true)
@@ -270,6 +319,27 @@ public class AdminNotificationService {
 					createdFrom,
 					createdTo);
 		}
+	}
+
+	public record NotificationFilterOptions(
+			List<String> notificationTypes,
+			List<String> creatableNotificationTypes,
+			List<String> relatedTypes,
+			List<CreatorOption> creators) {
+
+		public NotificationFilterOptions {
+			notificationTypes = List.copyOf(notificationTypes);
+			creatableNotificationTypes = List.copyOf(creatableNotificationTypes);
+			relatedTypes = List.copyOf(relatedTypes);
+			creators = List.copyOf(creators);
+		}
+	}
+
+	public record CreatorOption(
+			UUID id,
+			String fullName,
+			String email,
+			UserAccountStatus accountStatus) {
 	}
 
 	public record CreateNotificationCommand(

@@ -1,19 +1,33 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { ChevronLeft, ChevronRight, Eye, Filter, Plus, RefreshCw, ShieldAlert } from "lucide-react";
-import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from "react";
+import { AdminEntityPicker, type AdminPickerOption } from "@/components/app/AdminEntityPicker";
 import { AdminNotificationCreateDialog } from "@/components/app/notifications/AdminNotificationCreateDialog";
 import { AdminNotificationDetailDialog } from "@/components/app/notifications/AdminNotificationDetailDialog";
 import { EmptyState, PageHeader, Panel, StatusPill } from "@/components/app/ui";
 import {
   createAdminNotification,
   getAdminNotification,
+  getAdminNotificationFilterOptions,
   getAdminNotifications,
+  getAdminProjectOptions,
+  getAdminUserOptions,
   hideAdminNotification,
-  isUuid,
   type AdminNotificationDetail,
+  type AdminNotificationFilterOptions,
   type AdminNotificationFilters,
   type AdminNotificationSummary,
   type AdminPage,
+  type AdminProjectOption,
+  type AdminUserOption,
   type CreateAdminNotificationInput,
 } from "@/lib/admin-api";
 import { useAuth } from "@/lib/auth";
@@ -84,6 +98,7 @@ function AdminNotificationsPage({
 }) {
   const listRequestSequence = useRef(0);
   const detailRequestSequence = useRef(0);
+  const lookupRequestSequence = useRef(0);
   const [draft, setDraft] = useState<FilterDraft>(EMPTY_FILTERS);
   const [filters, setFilters] = useState<AdminNotificationFilters>({ size: 20 });
   const [page, setPage] = useState(0);
@@ -101,6 +116,45 @@ function AdminNotificationsPage({
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [hidePending, setHidePending] = useState(false);
+  const [users, setUsers] = useState<AdminUserOption[]>([]);
+  const [projects, setProjects] = useState<AdminProjectOption[]>([]);
+  const [filterOptions, setFilterOptions] = useState<AdminNotificationFilterOptions | null>(null);
+  const [userLookupLoading, setUserLookupLoading] = useState(true);
+  const [projectLookupLoading, setProjectLookupLoading] = useState(true);
+  const [filterOptionsLoading, setFilterOptionsLoading] = useState(true);
+  const [userLookupError, setUserLookupError] = useState<string | null>(null);
+  const [projectLookupError, setProjectLookupError] = useState<string | null>(null);
+  const [filterOptionsError, setFilterOptionsError] = useState<string | null>(null);
+  const creatorOptions = useMemo<AdminPickerOption[]>(
+    () =>
+      (filterOptions?.creators || []).map((option) => ({
+        value: option.id,
+        label: option.fullName,
+        description: `${option.email} · ${humanize(option.accountStatus)}`,
+        keywords: `${option.email} ${option.accountStatus}`,
+      })),
+    [filterOptions],
+  );
+  const notificationTypeOptions = useMemo<AdminPickerOption[]>(
+    () =>
+      (filterOptions?.notificationTypes || []).map((value) => ({
+        value,
+        label: humanize(value),
+        description: value,
+        keywords: value,
+      })),
+    [filterOptions],
+  );
+  const relatedTypeOptions = useMemo<AdminPickerOption[]>(
+    () =>
+      (filterOptions?.relatedTypes || []).map((value) => ({
+        value,
+        label: humanize(value),
+        description: value,
+        keywords: value,
+      })),
+    [filterOptions],
+  );
 
   const loadPage = useCallback(async () => {
     const requestSequence = ++listRequestSequence.current;
@@ -122,13 +176,62 @@ function AdminNotificationsPage({
     }
   }, [accessToken, filters, page]);
 
+  const loadLookups = useCallback(async () => {
+    const requestSequence = ++lookupRequestSequence.current;
+    setUserLookupLoading(true);
+    setProjectLookupLoading(true);
+    setFilterOptionsLoading(true);
+    setUserLookupError(null);
+    setProjectLookupError(null);
+    setFilterOptionsError(null);
+    const [userResult, projectResult, filterOptionsResult] = await Promise.allSettled([
+      getAdminUserOptions(accessToken),
+      getAdminProjectOptions(accessToken),
+      getAdminNotificationFilterOptions(accessToken),
+    ]);
+    if (requestSequence !== lookupRequestSequence.current) return;
+
+    if (userResult.status === "fulfilled") {
+      setUsers(userResult.value);
+    } else {
+      setUsers([]);
+      setUserLookupError(errorMessage(userResult.reason, "User choices could not be loaded."));
+    }
+    if (projectResult.status === "fulfilled") {
+      setProjects(projectResult.value);
+    } else {
+      setProjects([]);
+      setProjectLookupError(
+        errorMessage(projectResult.reason, "Project choices could not be loaded."),
+      );
+    }
+    if (filterOptionsResult.status === "fulfilled") {
+      setFilterOptions(filterOptionsResult.value);
+    } else {
+      setFilterOptions(null);
+      setFilterOptionsError(
+        errorMessage(
+          filterOptionsResult.reason,
+          "Notification filter choices could not be loaded.",
+        ),
+      );
+    }
+    setUserLookupLoading(false);
+    setProjectLookupLoading(false);
+    setFilterOptionsLoading(false);
+  }, [accessToken]);
+
   useEffect(() => {
     void loadPage();
   }, [loadPage, reloadKey]);
 
+  useEffect(() => {
+    void loadLookups();
+  }, [loadLookups]);
+
   const applyFilters = (event: FormEvent) => {
     event.preventDefault();
-    const validation = validateFilters(draft);
+    const validation = validateFilters(draft, filterOptions);
     if (validation) {
       setFilterError(validation);
       return;
@@ -218,11 +321,23 @@ function AdminNotificationsPage({
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
-              onClick={() => setReloadKey((key) => key + 1)}
-              disabled={loading}
+              onClick={() => {
+                setReloadKey((key) => key + 1);
+                void loadLookups();
+              }}
+              disabled={
+                loading || userLookupLoading || projectLookupLoading || filterOptionsLoading
+              }
               className="inline-flex items-center gap-1.5 rounded-md border border-hairline bg-surface-elev px-3 py-2 text-xs text-ink hover:bg-muted disabled:cursor-not-allowed disabled:opacity-45"
             >
-              <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} /> Refresh
+              <RefreshCw
+                className={`h-3.5 w-3.5 ${
+                  loading || userLookupLoading || projectLookupLoading || filterOptionsLoading
+                    ? "animate-spin"
+                    : ""
+                }`}
+              />{" "}
+              Refresh
             </button>
             <button
               type="button"
@@ -250,27 +365,42 @@ function AdminNotificationsPage({
         <form onSubmit={applyFilters} className="space-y-4">
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             <FilterField label="Notification type">
-              <input
+              <AdminEntityPicker
+                options={notificationTypeOptions}
                 value={draft.notificationType}
-                onChange={(event) => setDraft({ ...draft, notificationType: event.target.value })}
-                className="system-filter-input font-mono"
-                placeholder="ADMIN_ANNOUNCEMENT"
+                onChange={(notificationType) => setDraft({ ...draft, notificationType })}
+                placeholder="Choose a type"
+                allLabel="All notification types"
+                searchPlaceholder="Search notification types…"
+                emptyMessage="No notification types are available."
+                loading={filterOptionsLoading}
+                error={filterOptionsError}
               />
             </FilterField>
-            <FilterField label="Creator UUID">
-              <input
+            <FilterField label="Creator">
+              <AdminEntityPicker
+                options={creatorOptions}
                 value={draft.creatorId}
-                onChange={(event) => setDraft({ ...draft, creatorId: event.target.value })}
-                className="system-filter-input font-mono"
-                placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                onChange={(creatorId) => setDraft({ ...draft, creatorId })}
+                placeholder="Choose a creator"
+                allLabel="All creators"
+                searchPlaceholder="Search creator name or email…"
+                emptyMessage="No matching users in this lab."
+                loading={filterOptionsLoading}
+                error={filterOptionsError}
               />
             </FilterField>
             <FilterField label="Related type">
-              <input
+              <AdminEntityPicker
+                options={relatedTypeOptions}
                 value={draft.relatedType}
-                onChange={(event) => setDraft({ ...draft, relatedType: event.target.value })}
-                className="system-filter-input font-mono"
-                placeholder="PROJECT"
+                onChange={(relatedType) => setDraft({ ...draft, relatedType })}
+                placeholder="Choose a relation type"
+                allLabel="All relation types"
+                searchPlaceholder="Search relation types…"
+                emptyMessage="No relation types are available."
+                loading={filterOptionsLoading}
+                error={filterOptionsError}
               />
             </FilterField>
             <FilterField label="Rows per page">
@@ -315,7 +445,8 @@ function AdminNotificationsPage({
             </button>
             <button
               type="submit"
-              className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90"
+              disabled={filterOptionsLoading}
+              className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-45"
             >
               <Filter className="h-3.5 w-3.5" /> Apply filters
             </button>
@@ -381,10 +512,10 @@ function AdminNotificationsPage({
                     <td className="px-3 py-3 text-xs text-ink-soft">
                       {notification.relatedType ? (
                         <>
-                          <div>{humanize(notification.relatedType)}</div>
-                          <div className="mt-0.5 max-w-40 truncate font-mono text-[10px]">
-                            {notification.relatedId}
+                          <div className="max-w-48 font-medium text-ink">
+                            {relatedRecordLabel(notification, projects)}
                           </div>
+                          <div className="mt-0.5">{humanize(notification.relatedType)}</div>
                         </>
                       ) : (
                         "—"
@@ -432,12 +563,22 @@ function AdminNotificationsPage({
         pending={createPending}
         error={createError}
         currentUser={currentUser}
+        users={users}
+        projects={projects}
+        creatableNotificationTypes={filterOptions?.creatableNotificationTypes || []}
+        userLookupLoading={userLookupLoading}
+        userLookupError={userLookupError}
+        projectLookupLoading={projectLookupLoading}
+        projectLookupError={projectLookupError}
+        notificationTypeLookupLoading={filterOptionsLoading}
+        notificationTypeLookupError={filterOptionsError}
         onClose={() => {
           if (!createPending) {
             setCreateOpen(false);
             setCreateError(null);
           }
         }}
+        onEdit={() => setCreateError(null)}
         onSubmit={create}
       />
 
@@ -447,6 +588,7 @@ function AdminNotificationsPage({
         loading={detailLoading}
         hidePending={hidePending}
         error={detailError}
+        relatedRecordLabel={selected ? relatedRecordLabel(selected, projects) : null}
         onClose={() => {
           detailRequestSequence.current += 1;
           setSelectedId(null);
@@ -570,9 +712,16 @@ function AccessState({ title, description }: { title: string; description: strin
   );
 }
 
-function validateFilters(filters: FilterDraft) {
-  const creatorId = filters.creatorId.trim();
-  if (creatorId && !isUuid(creatorId)) return "Creator ID must be a valid UUID.";
+function validateFilters(filters: FilterDraft, options: AdminNotificationFilterOptions | null) {
+  if (filters.notificationType && !options?.notificationTypes.includes(filters.notificationType)) {
+    return "The selected notification type is no longer available. Refresh or clear the filter.";
+  }
+  if (filters.creatorId && !options?.creators.some((creator) => creator.id === filters.creatorId)) {
+    return "The selected creator is no longer available. Refresh or clear the filter.";
+  }
+  if (filters.relatedType && !options?.relatedTypes.includes(filters.relatedType)) {
+    return "The selected relation type is no longer available. Refresh or clear the filter.";
+  }
   if (filters.createdFrom && filters.createdTo) {
     if (new Date(filters.createdFrom) > new Date(filters.createdTo)) {
       return "Created-from must not be after created-to.";
@@ -601,6 +750,17 @@ function toIsoDate(value: string) {
 function readPercentage(notification: AdminNotificationSummary) {
   if (notification.recipientCount <= 0) return 0;
   return Math.min(100, Math.round((notification.readCount / notification.recipientCount) * 100));
+}
+
+function relatedRecordLabel(
+  notification: AdminNotificationSummary,
+  projects: AdminProjectOption[],
+) {
+  if (notification.relatedType?.toUpperCase() === "PROJECT" && notification.relatedId) {
+    const project = projects.find((candidate) => candidate.id === notification.relatedId);
+    return project ? `${project.code} — ${project.name}` : "Unavailable project";
+  }
+  return notification.relatedType ? humanize(notification.relatedType) : "Not linked";
 }
 
 function humanize(value: string) {

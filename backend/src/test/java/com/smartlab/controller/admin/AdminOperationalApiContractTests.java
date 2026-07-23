@@ -24,6 +24,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.smartlab.dto.response.admin.AdminDashboardResponse;
 import com.smartlab.dto.response.admin.AdminJoinRequestResponse;
 import com.smartlab.dto.response.admin.AdminNotificationDetailResponse;
+import com.smartlab.dto.response.admin.AdminNotificationFilterOptionsResponse;
 import com.smartlab.dto.response.admin.AdminNotificationResponse;
 import com.smartlab.dto.response.admin.PageResponse;
 
@@ -49,6 +50,8 @@ class AdminOperationalApiContractTests {
 				"/{requestId}/reject");
 
 		assertMethodMapping(AdminNotificationController.class, "getNotifications", GetMapping.class);
+		assertMethodMapping(AdminNotificationController.class, "getFilterOptions", GetMapping.class,
+				"/options");
 		assertMethodMapping(AdminNotificationController.class, "getNotificationDetail", GetMapping.class,
 				"/{notificationId}");
 		assertMethodMapping(AdminNotificationController.class, "createNotification", PostMapping.class);
@@ -70,6 +73,8 @@ class AdminOperationalApiContractTests {
 				AdminNotificationDetailResponse.class,
 				AdminNotificationDetailResponse.UserSummary.class,
 				AdminNotificationDetailResponse.RecipientResponse.class,
+				AdminNotificationFilterOptionsResponse.class,
+				AdminNotificationFilterOptionsResponse.CreatorOption.class,
 				PageResponse.class);
 	}
 

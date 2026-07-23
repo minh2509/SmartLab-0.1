@@ -1,6 +1,11 @@
 import { Send, UserRoundCheck } from "lucide-react";
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import {
+  AdminEntityMultiPicker,
+  AdminEntityPicker,
+  type AdminPickerOption,
+} from "@/components/app/AdminEntityPicker";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -8,7 +13,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  isUuid,
+  type AdminProjectOption,
+  type AdminUserOption,
   type CreateAdminNotificationInput,
   type NotificationTargetType,
 } from "@/lib/admin-api";
@@ -18,9 +24,9 @@ type FormState = {
   message: string;
   notificationType: string;
   targetType: NotificationTargetType;
-  userIds: string;
+  userIds: string[];
   projectId: string;
-  relatedType: string;
+  relatedType: "" | "PROJECT";
   relatedId: string;
   linkUrl: string;
 };
@@ -30,7 +36,7 @@ const EMPTY_FORM: FormState = {
   message: "",
   notificationType: "ADMIN_ANNOUNCEMENT",
   targetType: "LAB",
-  userIds: "",
+  userIds: [],
   projectId: "",
   relatedType: "",
   relatedId: "",
@@ -42,20 +48,100 @@ export function AdminNotificationCreateDialog({
   pending,
   error,
   currentUser,
+  users,
+  projects,
+  creatableNotificationTypes,
+  userLookupLoading,
+  userLookupError,
+  projectLookupLoading,
+  projectLookupError,
+  notificationTypeLookupLoading,
+  notificationTypeLookupError,
   onClose,
+  onEdit,
   onSubmit,
 }: {
   open: boolean;
   pending: boolean;
   error: string | null;
   currentUser: { id: string; fullName: string; email: string };
+  users: AdminUserOption[];
+  projects: AdminProjectOption[];
+  creatableNotificationTypes: string[];
+  userLookupLoading: boolean;
+  userLookupError: string | null;
+  projectLookupLoading: boolean;
+  projectLookupError: string | null;
+  notificationTypeLookupLoading: boolean;
+  notificationTypeLookupError: string | null;
   onClose: () => void;
+  onEdit: () => void;
   onSubmit: (input: CreateAdminNotificationInput) => Promise<void>;
 }) {
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [touched, setTouched] = useState<Record<string, boolean>>({});
-  const errors = useMemo(() => validate(form), [form]);
+  const errors = useMemo(
+    () => validate(form, users, projects, currentUser.id, creatableNotificationTypes),
+    [creatableNotificationTypes, currentUser.id, form, projects, users],
+  );
   const valid = Object.keys(errors).length === 0;
+  const userOptions = useMemo<AdminPickerOption[]>(() => {
+    const options = users
+      .filter((user) => user.accountStatus !== "DELETED")
+      .map((user) => ({
+        value: user.id,
+        label: user.fullName,
+        description: `${user.email} · ${humanize(user.accountStatus)}`,
+        keywords: `${user.email} ${user.roleCodes.join(" ")}`,
+      }));
+    if (!options.some((option) => option.value === currentUser.id)) {
+      options.unshift({
+        value: currentUser.id,
+        label: currentUser.fullName,
+        description: `${currentUser.email} · Current account`,
+        keywords: currentUser.email,
+      });
+    }
+    return options;
+  }, [currentUser, users]);
+  const projectOptions = useMemo<AdminPickerOption[]>(
+    () =>
+      projects.map((project) => ({
+        value: project.id,
+        label: `${project.code} — ${project.name}`,
+        description: `${humanize(project.status)} · ${project.activeRecipientCount} active recipient${
+          project.activeRecipientCount === 1 ? "" : "s"
+        }`,
+        keywords: `${project.name} ${project.code} ${project.slug} ${project.status}`,
+      })),
+    [projects],
+  );
+  const targetProjectOptions = useMemo(
+    () =>
+      projectOptions.map((option) => ({
+        ...option,
+        disabled:
+          projects.find((project) => project.id === option.value)?.activeRecipientCount === 0,
+      })),
+    [projectOptions, projects],
+  );
+  const notificationTypeOptions = useMemo<AdminPickerOption[]>(
+    () =>
+      creatableNotificationTypes.map((value) => ({
+        value,
+        label: humanize(value),
+        description: value,
+        keywords: value,
+      })),
+    [creatableNotificationTypes],
+  );
+  const selectedProject = projects.find((project) => project.id === form.projectId) || null;
+  const selectedRelatedProject = projects.find((project) => project.id === form.relatedId) || null;
+
+  const updateForm = (nextForm: FormState) => {
+    setForm(nextForm);
+    if (error) onEdit();
+  };
 
   useEffect(() => {
     if (open) {
@@ -124,18 +210,26 @@ export function AdminNotificationCreateDialog({
                 label="Notification type"
                 required
                 error={touched.notificationType ? errors.notificationType : undefined}
-                hint={`${form.notificationType.length}/80`}
               >
                 {(controlProps) => (
-                  <input
-                    {...controlProps}
-                    maxLength={80}
+                  <AdminEntityPicker
+                    id={controlProps.id}
+                    required={controlProps.required}
+                    aria-required={controlProps["aria-required"]}
+                    aria-invalid={controlProps["aria-invalid"]}
+                    aria-describedby={controlProps["aria-describedby"]}
+                    options={notificationTypeOptions}
                     value={form.notificationType}
                     disabled={pending}
-                    onBlur={() => setTouched((current) => ({ ...current, notificationType: true }))}
-                    onChange={(event) => setForm({ ...form, notificationType: event.target.value })}
-                    className="admin-notification-input font-mono"
-                    placeholder="ADMIN_ANNOUNCEMENT"
+                    onChange={(notificationType) => {
+                      updateForm({ ...form, notificationType });
+                      setTouched((current) => ({ ...current, notificationType: true }));
+                    }}
+                    placeholder="Choose a notification type"
+                    searchPlaceholder="Search notification types…"
+                    emptyMessage="No notification types are available for manual creation."
+                    loading={notificationTypeLookupLoading}
+                    error={notificationTypeLookupError}
                   />
                 )}
               </Field>
@@ -146,9 +240,15 @@ export function AdminNotificationCreateDialog({
                     {...controlProps}
                     value={form.targetType}
                     disabled={pending}
-                    onChange={(event) =>
-                      setForm({ ...form, targetType: event.target.value as NotificationTargetType })
-                    }
+                    onChange={(event) => {
+                      const targetType = event.target.value as NotificationTargetType;
+                      updateForm({
+                        ...form,
+                        targetType,
+                        userIds: targetType === "USER" ? form.userIds : [],
+                        projectId: targetType === "PROJECT" ? form.projectId : "",
+                      });
+                    }}
                     className="admin-notification-input"
                   >
                     <option value="LAB">Entire lab</option>
@@ -177,21 +277,30 @@ export function AdminNotificationCreateDialog({
               <div>
                 <Field
                   id="admin-notification-user-ids"
-                  label="Recipient UUIDs"
+                  label="Recipients"
                   required
-                  hint="Comma, space, or new line separated"
+                  hint="Search by name or email"
                   error={touched.userIds ? errors.userIds : undefined}
                 >
                   {(controlProps) => (
-                    <textarea
-                      {...controlProps}
-                      rows={3}
-                      value={form.userIds}
+                    <AdminEntityMultiPicker
+                      id={controlProps.id}
+                      required={controlProps.required}
+                      aria-required={controlProps["aria-required"]}
+                      aria-invalid={controlProps["aria-invalid"]}
+                      aria-describedby={controlProps["aria-describedby"]}
+                      options={userOptions}
+                      values={form.userIds}
                       disabled={pending}
-                      onBlur={() => setTouched((current) => ({ ...current, userIds: true }))}
-                      onChange={(event) => setForm({ ...form, userIds: event.target.value })}
-                      className="admin-notification-input min-h-20 resize-y font-mono text-xs"
-                      placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                      onChange={(userIds) => {
+                        updateForm({ ...form, userIds });
+                        setTouched((current) => ({ ...current, userIds: true }));
+                      }}
+                      placeholder="Choose one or more recipients"
+                      searchPlaceholder="Search name, email, role, or status…"
+                      emptyMessage="No matching users in this lab."
+                      loading={userLookupLoading}
+                      error={userLookupError}
                     />
                   )}
                 </Field>
@@ -199,14 +308,19 @@ export function AdminNotificationCreateDialog({
                   type="button"
                   disabled={pending}
                   onClick={() => {
-                    const ids = parseUserIds(form.userIds);
-                    if (!ids.includes(currentUser.id)) ids.push(currentUser.id);
-                    setForm({ ...form, userIds: ids.join("\n") });
+                    const userIds = form.userIds.includes(currentUser.id)
+                      ? form.userIds
+                      : [...form.userIds, currentUser.id];
+                    updateForm({ ...form, userIds });
                     setTouched((current) => ({ ...current, userIds: true }));
                   }}
                   className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-hairline px-2.5 py-1.5 text-xs text-ink hover:bg-muted disabled:opacity-45"
                 >
-                  <UserRoundCheck className="h-3.5 w-3.5" /> Add my account · {currentUser.email}
+                  <UserRoundCheck className="h-3.5 w-3.5" />
+                  {form.userIds.includes(currentUser.id)
+                    ? "My account selected"
+                    : "Add my account"}{" "}
+                  · {currentUser.email}
                 </button>
               </div>
             ) : null}
@@ -214,73 +328,115 @@ export function AdminNotificationCreateDialog({
             {form.targetType === "PROJECT" ? (
               <Field
                 id="admin-notification-project-id"
-                label="Project UUID"
+                label="Project"
                 required
-                hint="Use the ID shown in Join Request detail"
+                hint="Search by name or code"
                 error={touched.projectId ? errors.projectId : undefined}
               >
                 {(controlProps) => (
-                  <>
-                    <input
-                      {...controlProps}
-                      value={form.projectId}
-                      disabled={pending}
-                      onBlur={() => setTouched((current) => ({ ...current, projectId: true }))}
-                      onChange={(event) => setForm({ ...form, projectId: event.target.value })}
-                      className="admin-notification-input font-mono"
-                      placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-                    />
-                    <p className="mt-1.5 text-[11px] leading-relaxed text-ink-soft">
-                      A project selector is unavailable until a backend project-list API exists.
-                    </p>
-                  </>
+                  <AdminEntityPicker
+                    id={controlProps.id}
+                    required={controlProps.required}
+                    aria-required={controlProps["aria-required"]}
+                    aria-invalid={controlProps["aria-invalid"]}
+                    aria-describedby={controlProps["aria-describedby"]}
+                    options={targetProjectOptions}
+                    value={form.projectId}
+                    onChange={(projectId) => {
+                      updateForm({ ...form, projectId });
+                      setTouched((current) => ({ ...current, projectId: true }));
+                    }}
+                    placeholder="Choose a project"
+                    searchPlaceholder="Search project name, code, slug, or status…"
+                    emptyMessage="No projects are available in this lab."
+                    loading={projectLookupLoading}
+                    error={projectLookupError}
+                    disabled={pending}
+                  />
                 )}
               </Field>
             ) : null}
 
-            <div className="rounded-lg border border-hairline p-4">
-              <div className="text-sm font-medium text-ink">Related record</div>
-              <p className="mt-1 text-xs leading-relaxed text-ink-soft">
-                Optional. Type and ID must either both be filled or both be empty.
-              </p>
-              <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                <Field
-                  id="admin-notification-related-type"
-                  label="Related type"
-                  error={touched.relatedType ? errors.relatedType : undefined}
-                >
-                  {(controlProps) => (
-                    <input
-                      {...controlProps}
-                      maxLength={80}
-                      value={form.relatedType}
-                      disabled={pending}
-                      onBlur={() => setTouched((current) => ({ ...current, relatedType: true }))}
-                      onChange={(event) => setForm({ ...form, relatedType: event.target.value })}
-                      className="admin-notification-input font-mono"
-                      placeholder="PROJECT"
-                    />
-                  )}
-                </Field>
-                <Field
-                  id="admin-notification-related-id"
-                  label="Related UUID"
-                  error={touched.relatedId ? errors.relatedId : undefined}
-                >
-                  {(controlProps) => (
-                    <input
-                      {...controlProps}
-                      value={form.relatedId}
-                      disabled={pending}
-                      onBlur={() => setTouched((current) => ({ ...current, relatedId: true }))}
-                      onChange={(event) => setForm({ ...form, relatedId: event.target.value })}
-                      className="admin-notification-input font-mono"
-                      placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-                    />
-                  )}
-                </Field>
+            {form.targetType !== "PROJECT" ? (
+              <div className="rounded-lg border border-hairline p-4">
+                <div className="text-sm font-medium text-ink">Related record</div>
+                <p className="mt-1 text-xs leading-relaxed text-ink-soft">
+                  Optional. Choose Project to attach context without entering an internal ID.
+                </p>
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                  <Field
+                    id="admin-notification-related-type"
+                    label="Related type"
+                    error={touched.relatedType ? errors.relatedType : undefined}
+                  >
+                    {(controlProps) => (
+                      <select
+                        {...controlProps}
+                        value={form.relatedType}
+                        disabled={pending}
+                        onBlur={() => setTouched((current) => ({ ...current, relatedType: true }))}
+                        onChange={(event) =>
+                          updateForm({
+                            ...form,
+                            relatedType: event.target.value as FormState["relatedType"],
+                            relatedId: "",
+                          })
+                        }
+                        className="admin-notification-input"
+                      >
+                        <option value="">No related record</option>
+                        <option value="PROJECT">Project</option>
+                      </select>
+                    )}
+                  </Field>
+                  {form.relatedType === "PROJECT" ? (
+                    <Field
+                      id="admin-notification-related-id"
+                      label="Related project"
+                      required
+                      error={touched.relatedId ? errors.relatedId : undefined}
+                    >
+                      {(controlProps) => (
+                        <AdminEntityPicker
+                          id={controlProps.id}
+                          required={controlProps.required}
+                          aria-required={controlProps["aria-required"]}
+                          aria-invalid={controlProps["aria-invalid"]}
+                          aria-describedby={controlProps["aria-describedby"]}
+                          options={projectOptions}
+                          value={form.relatedId}
+                          onChange={(relatedId) => {
+                            updateForm({ ...form, relatedId });
+                            setTouched((current) => ({ ...current, relatedId: true }));
+                          }}
+                          placeholder="Choose a related project"
+                          searchPlaceholder="Search project name, code, slug, or status…"
+                          emptyMessage="No projects are available in this lab."
+                          loading={projectLookupLoading}
+                          error={projectLookupError}
+                          disabled={pending}
+                        />
+                      )}
+                    </Field>
+                  ) : null}
+                </div>
+                {selectedRelatedProject ? (
+                  <p className="mt-2 text-[11px] text-ink-soft">
+                    Linked to {selectedRelatedProject.code} — {selectedRelatedProject.name}.
+                  </p>
+                ) : null}
               </div>
-            </div>
+            ) : selectedProject ? (
+              <div className="rounded-lg border border-hairline bg-muted/25 px-4 py-3">
+                <div className="text-xs font-medium text-ink">
+                  Project context attached automatically
+                </div>
+                <p className="mt-1 text-[11px] leading-relaxed text-ink-soft">
+                  Recipients and the related record use {selectedProject.code} —{" "}
+                  {selectedProject.name}.
+                </p>
+              </div>
+            ) : null}
 
             <Field
               id="admin-notification-link"
@@ -409,36 +565,49 @@ function Field({
   );
 }
 
-function validate(form: FormState) {
+function validate(
+  form: FormState,
+  users: AdminUserOption[],
+  projects: AdminProjectOption[],
+  currentUserId: string,
+  creatableNotificationTypes: string[],
+) {
   const errors: Record<string, string> = {};
   const title = form.title.trim();
   const type = form.notificationType.trim();
   const projectId = form.projectId.trim();
-  const relatedType = form.relatedType.trim();
   const relatedId = form.relatedId.trim();
   const linkUrl = form.linkUrl.trim();
-  const userIds = parseUserIds(form.userIds);
+  const availableUserIds = new Set([...users.map((user) => user.id), currentUserId]);
+  const availableProjects = new Map(projects.map((project) => [project.id, project]));
 
   if (!title) errors.title = "Title is required.";
   else if (title.length > 255) errors.title = "Title must not exceed 255 characters.";
   if (!type) errors.notificationType = "Notification type is required.";
-  else if (type.length > 80) errors.notificationType = "Type must not exceed 80 characters.";
+  else if (!creatableNotificationTypes.includes(type)) {
+    errors.notificationType = "Choose an available notification type.";
+  }
 
   if (form.targetType === "USER") {
-    if (userIds.length === 0) errors.userIds = "Add at least one user UUID.";
-    else if (userIds.some((id) => !isUuid(id)))
-      errors.userIds = "Every recipient must be a valid UUID.";
+    if (form.userIds.length === 0) errors.userIds = "Choose at least one recipient.";
+    else if (form.userIds.some((id) => !availableUserIds.has(id))) {
+      errors.userIds = "One or more selected recipients are no longer available.";
+    }
   }
-  if (form.targetType === "PROJECT" && !isUuid(projectId)) {
-    errors.projectId = "A valid project UUID is required.";
+  if (form.targetType === "PROJECT") {
+    const project = availableProjects.get(projectId);
+    if (!project) errors.projectId = "Choose an available project.";
+    else if (project.activeRecipientCount === 0) {
+      errors.projectId = "Choose a project with at least one active recipient.";
+    }
   }
 
-  if (relatedType.length > 80) errors.relatedType = "Related type must not exceed 80 characters.";
-  if (Boolean(relatedType) !== Boolean(relatedId)) {
-    errors.relatedType = "Related type and UUID must be supplied together.";
-    errors.relatedId = "Related type and UUID must be supplied together.";
-  } else if (relatedId && !isUuid(relatedId)) {
-    errors.relatedId = "Related ID must be a valid UUID.";
+  if (
+    form.targetType !== "PROJECT" &&
+    form.relatedType === "PROJECT" &&
+    !availableProjects.has(relatedId)
+  ) {
+    errors.relatedId = "Choose an available related project.";
   }
 
   if (linkUrl && !isValidLink(linkUrl)) {
@@ -448,26 +617,29 @@ function validate(form: FormState) {
 }
 
 function toInput(form: FormState): CreateAdminNotificationInput {
-  const relatedType = form.relatedType.trim();
-  const relatedId = form.relatedId.trim();
+  const projectId = form.targetType === "PROJECT" ? form.projectId.trim() : null;
+  const relatedType = form.targetType === "PROJECT" ? "PROJECT" : form.relatedType || null;
+  const relatedId =
+    form.targetType === "PROJECT" ? projectId : form.relatedType ? form.relatedId : null;
   return {
     title: form.title.trim(),
     message: form.message.trim() || null,
     notificationType: form.notificationType.trim(),
     targetType: form.targetType,
-    userIds: form.targetType === "USER" ? Array.from(new Set(parseUserIds(form.userIds))) : [],
-    projectId: form.targetType === "PROJECT" ? form.projectId.trim() : null,
-    relatedType: relatedType || null,
-    relatedId: relatedId || null,
+    userIds: form.targetType === "USER" ? Array.from(new Set(form.userIds)) : [],
+    projectId,
+    relatedType,
+    relatedId,
     linkUrl: form.linkUrl.trim() || null,
   };
 }
 
-function parseUserIds(value: string) {
+function humanize(value: string) {
   return value
-    .split(/[\s,;]+/)
-    .map((item) => item.trim())
-    .filter(Boolean);
+    .toLowerCase()
+    .split("_")
+    .map((part) => part[0]?.toUpperCase() + part.slice(1))
+    .join(" ");
 }
 
 function isValidLink(value: string) {

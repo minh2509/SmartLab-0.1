@@ -13,6 +13,7 @@ import org.springframework.stereotype.Repository;
 
 import com.smartlab.entity.Notification;
 import com.smartlab.entity.NotificationRecipient;
+import com.smartlab.entity.User;
 
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.TypedQuery;
@@ -59,6 +60,38 @@ public class AdminNotificationReadRepository {
 		return new PageImpl<>(typedQuery.getResultList(), PageRequest.of(page, size), total);
 	}
 
+	public NotificationFilterLookup findFilterOptions(UUID labId) {
+		List<String> notificationTypes = entityManager.createQuery("""
+				select distinct notification.notificationType
+				from Notification notification
+				where notification.lab.id = :labId
+				and exists (
+					select recipient.id
+					from NotificationRecipient recipient
+					where recipient.notification = notification
+					and recipient.deletedAt is null
+				)
+				""", String.class)
+				.setParameter("labId", labId)
+				.getResultList();
+		List<User> creators = entityManager.createQuery("""
+				select distinct notification.createdBy
+				from Notification notification
+				where notification.lab.id = :labId
+				and notification.createdBy is not null
+				and notification.createdBy.lab.id = :labId
+				and exists (
+					select recipient.id
+					from NotificationRecipient recipient
+					where recipient.notification = notification
+					and recipient.deletedAt is null
+				)
+				""", User.class)
+				.setParameter("labId", labId)
+				.getResultList();
+		return new NotificationFilterLookup(notificationTypes, creators);
+	}
+
 	private static Predicate[] predicates(
 			CriteriaBuilder builder,
 			AbstractQuery<?> query,
@@ -100,5 +133,15 @@ public class AdminNotificationReadRepository {
 			String relatedType,
 			OffsetDateTime createdFrom,
 			OffsetDateTime createdTo) {
+	}
+
+	public record NotificationFilterLookup(
+			List<String> notificationTypes,
+			List<User> creators) {
+
+		public NotificationFilterLookup {
+			notificationTypes = List.copyOf(notificationTypes);
+			creators = List.copyOf(creators);
+		}
 	}
 }

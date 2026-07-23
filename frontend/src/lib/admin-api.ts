@@ -27,6 +27,25 @@ export type AdminRecentActivity = {
   createdAt: string;
 };
 
+export type AdminAccountStatus = "ACTIVE" | "LOCKED" | "PENDING" | "DELETED";
+
+export type AdminUserOption = {
+  id: string;
+  fullName: string;
+  email: string;
+  accountStatus: AdminAccountStatus;
+  roleCodes: string[];
+};
+
+export type AdminProjectOption = {
+  id: string;
+  code: string;
+  name: string;
+  slug: string;
+  status: "PROPOSED" | "PREPARING" | "IN_PROGRESS" | "PAUSED" | "COMPLETED" | "CLOSED";
+  activeRecipientCount: number;
+};
+
 export type AdminJoinRequestStatus = "PENDING" | "APPROVED" | "REJECTED" | "CANCELLED";
 
 export type AdminJoinRequest = {
@@ -113,6 +132,18 @@ export type AdminNotificationFilters = {
   size?: number;
 };
 
+export type AdminNotificationFilterOptions = {
+  notificationTypes: string[];
+  creatableNotificationTypes: string[];
+  relatedTypes: string[];
+  creators: Array<{
+    id: string;
+    fullName: string;
+    email: string;
+    accountStatus: AdminAccountStatus;
+  }>;
+};
+
 export type NotificationTargetType = "USER" | "PROJECT" | "LAB";
 
 export type CreateAdminNotificationInput = {
@@ -178,6 +209,13 @@ function arrayValue(record: JsonRecord, key: string, context: string): unknown[]
   return value;
 }
 
+function listValue(value: unknown, context: string): unknown[] {
+  if (!Array.isArray(value)) {
+    throw new Error(`The backend returned an invalid ${context} response.`);
+  }
+  return value;
+}
+
 function nullableRecordValue(record: JsonRecord, key: string, context: string): JsonRecord | null {
   const value = record[key];
   if (value === null || value === undefined) return null;
@@ -215,6 +253,46 @@ function parseAdminDashboard(value: unknown): AdminDashboard {
     recentActivities: arrayValue(dashboard, "recentActivities", "admin dashboard").map(
       parseRecentActivity,
     ),
+  };
+}
+
+function parseAdminUserOption(value: unknown): AdminUserOption {
+  const item = recordValue(value, "Admin user option");
+  return {
+    id: stringValue(item, "id", "Admin user option"),
+    fullName: stringValue(item, "fullName", "Admin user option"),
+    email: stringValue(item, "email", "Admin user option"),
+    accountStatus: oneOf(
+      stringValue(item, "accountStatus", "Admin user option"),
+      ["ACTIVE", "LOCKED", "PENDING", "DELETED"] as const,
+      "Admin user option",
+    ),
+    roleCodes: arrayValue(item, "roleCodes", "Admin user option").map((roleCode) => {
+      if (typeof roleCode !== "string" || !roleCode) {
+        throw new Error("The backend returned an invalid Admin user option response.");
+      }
+      return roleCode;
+    }),
+  };
+}
+
+function parseAdminProjectOption(value: unknown): AdminProjectOption {
+  const item = recordValue(value, "Admin project option");
+  const activeRecipientCount = numberValue(item, "activeRecipientCount", "Admin project option");
+  if (!Number.isInteger(activeRecipientCount) || activeRecipientCount < 0) {
+    throw new Error("The backend returned an invalid Admin project option response.");
+  }
+  return {
+    id: stringValue(item, "id", "Admin project option"),
+    code: stringValue(item, "code", "Admin project option"),
+    name: stringValue(item, "name", "Admin project option"),
+    slug: stringValue(item, "slug", "Admin project option"),
+    status: oneOf(
+      stringValue(item, "status", "Admin project option"),
+      ["PROPOSED", "PREPARING", "IN_PROGRESS", "PAUSED", "COMPLETED", "CLOSED"] as const,
+      "Admin project option",
+    ),
+    activeRecipientCount,
   };
 }
 
@@ -315,6 +393,35 @@ function parseAdminNotificationDetail(value: unknown): AdminNotificationDetail {
   };
 }
 
+function parseAdminNotificationFilterOptions(value: unknown): AdminNotificationFilterOptions {
+  const options = recordValue(value, "notification filter options");
+  const parseCodes = (key: "notificationTypes" | "creatableNotificationTypes" | "relatedTypes") =>
+    arrayValue(options, key, "notification filter options").map((item) => {
+      if (typeof item !== "string" || !item) {
+        throw new Error("The backend returned an invalid notification filter options response.");
+      }
+      return item;
+    });
+  return {
+    notificationTypes: parseCodes("notificationTypes"),
+    creatableNotificationTypes: parseCodes("creatableNotificationTypes"),
+    relatedTypes: parseCodes("relatedTypes"),
+    creators: arrayValue(options, "creators", "notification filter options").map((creatorValue) => {
+      const creator = recordValue(creatorValue, "notification creator option");
+      return {
+        id: stringValue(creator, "id", "notification creator option"),
+        fullName: stringValue(creator, "fullName", "notification creator option"),
+        email: stringValue(creator, "email", "notification creator option"),
+        accountStatus: oneOf(
+          stringValue(creator, "accountStatus", "notification creator option"),
+          ["ACTIVE", "LOCKED", "PENDING", "DELETED"] as const,
+          "notification creator option",
+        ),
+      };
+    }),
+  };
+}
+
 function parsePage<T>(
   value: unknown,
   parseItem: (item: unknown) => T,
@@ -346,6 +453,26 @@ export function isUuid(value: string) {
 export async function getAdminDashboard(token: string, recentLimit = 10) {
   const response = await apiRequest(withQuery("/api/admin/dashboard", { recentLimit }), { token });
   return parseAdminDashboard(response);
+}
+
+export async function getAdminUserOptions(token: string) {
+  const response = await apiRequest("/api/admin/users", { token });
+  return listValue(response, "Admin user options")
+    .map(parseAdminUserOption)
+    .sort((first, second) =>
+      `${first.fullName}\u0000${first.email}`.localeCompare(
+        `${second.fullName}\u0000${second.email}`,
+      ),
+    );
+}
+
+export async function getAdminProjectOptions(token: string) {
+  const response = await apiRequest("/api/admin/projects/options", { token });
+  return listValue(response, "Admin project options")
+    .map(parseAdminProjectOption)
+    .sort((first, second) =>
+      `${first.name}\u0000${first.code}`.localeCompare(`${second.name}\u0000${second.code}`),
+    );
 }
 
 export async function getAdminJoinRequests(token: string, filters: AdminJoinRequestFilters) {
@@ -380,6 +507,11 @@ export async function rejectAdminJoinRequest(token: string, requestId: string, r
 export async function getAdminNotifications(token: string, filters: AdminNotificationFilters) {
   const response = await apiRequest(withQuery("/api/admin/notifications", filters), { token });
   return parsePage(response, parseAdminNotificationSummary, "notification page");
+}
+
+export async function getAdminNotificationFilterOptions(token: string) {
+  const response = await apiRequest("/api/admin/notifications/options", { token });
+  return parseAdminNotificationFilterOptions(response);
 }
 
 export async function getAdminNotification(token: string, notificationId: string) {

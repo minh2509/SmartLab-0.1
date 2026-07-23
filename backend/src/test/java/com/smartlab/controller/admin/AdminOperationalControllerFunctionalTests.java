@@ -44,6 +44,7 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import com.smartlab.enums.FileVisibility;
 import com.smartlab.enums.NotificationTargetType;
 import com.smartlab.enums.ProjectJoinRequestStatus;
+import com.smartlab.enums.UserAccountStatus;
 import com.smartlab.exception.AdminFeatureDisabledException;
 import com.smartlab.exception.ApiExceptionHandler;
 import com.smartlab.exception.InvalidAdminWorkflowStateException;
@@ -286,6 +287,33 @@ class AdminOperationalControllerFunctionalTests {
 		assertEquals("PROJECT", filter.relatedType());
 		assertEquals(FILTER_FROM, filter.createdFrom());
 		assertEquals(FILTER_TO, filter.createdTo());
+	}
+
+	@Test
+	void notificationOptionsUseJwtLabAndReturnDropdownReadyValues() throws Exception {
+		when(notificationService.getFilterOptions(LAB_ID)).thenReturn(
+				new AdminNotificationService.NotificationFilterOptions(
+						List.of("ADMIN_ANNOUNCEMENT", "SYSTEM_NOTICE"),
+						List.of("ADMIN_ANNOUNCEMENT"),
+						List.of("PROJECT", "PROJECT_JOIN_REQUEST"),
+						List.of(new AdminNotificationService.CreatorOption(
+								ADMIN_ID,
+								"Admin User",
+								"admin@smart.lab",
+								UserAccountStatus.ACTIVE))));
+
+		mockMvc.perform(get("/api/admin/notifications/options"))
+				.andExpect(status().isOk())
+				.andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+				.andExpect(jsonPath("$.notificationTypes[0]").value("ADMIN_ANNOUNCEMENT"))
+				.andExpect(jsonPath("$.creatableNotificationTypes[0]").value("ADMIN_ANNOUNCEMENT"))
+				.andExpect(jsonPath("$.relatedTypes[0]").value("PROJECT"))
+				.andExpect(jsonPath("$.creators[0].id").value(ADMIN_ID.toString()))
+				.andExpect(jsonPath("$.creators[0].fullName").value("Admin User"))
+				.andExpect(jsonPath("$.creators[0].email").value("admin@smart.lab"))
+				.andExpect(jsonPath("$.creators[0].accountStatus").value("ACTIVE"));
+
+		verify(notificationService).getFilterOptions(LAB_ID);
 	}
 
 	@Test

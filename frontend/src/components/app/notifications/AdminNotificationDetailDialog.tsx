@@ -16,6 +16,7 @@ export function AdminNotificationDetailDialog({
   loading,
   hidePending,
   error,
+  relatedRecordLabel,
   onClose,
   onHide,
 }: {
@@ -24,6 +25,7 @@ export function AdminNotificationDetailDialog({
   loading: boolean;
   hidePending: boolean;
   error: string | null;
+  relatedRecordLabel: string | null;
   onClose: () => void;
   onHide: () => Promise<void>;
 }) {
@@ -95,8 +97,11 @@ export function AdminNotificationDetailDialog({
               <Detail label="Created by" value={notification.createdBy?.fullName || "System"} />
               <Detail label="Recipients" value={String(notification.recipientCount)} />
               <Detail label="Read" value={String(notification.readCount)} />
-              <Detail label="Related type" value={notification.relatedType || "Not linked"} />
-              <Detail label="Related UUID" value={notification.relatedId || "Not linked"} mono />
+              <Detail label="Related record" value={relatedRecordLabel || "Not linked"} />
+              <Detail
+                label="Relation type"
+                value={notification.relatedType ? humanize(notification.relatedType) : "Not linked"}
+              />
             </dl>
 
             <section aria-labelledby="recipient-heading">

@@ -61,7 +61,8 @@ public class SecurityConfig {
 				.authorizeHttpRequests(authorize -> authorize
 						.requestMatchers(HttpMethod.GET, "/actuator/health", "/actuator/health/**").permitAll()
 						.requestMatchers(HttpMethod.POST, "/api/auth/login").permitAll()
-						.requestMatchers("/api/admin/**").hasAnyRole("SUPER_ADMIN", "ADMIN")
+						.requestMatchers("/api/admin/**")
+							.hasAnyAuthority("ROLE_SUPER_ADMIN", "ROLE_ADMIN")
 						.requestMatchers("/api/**").authenticated()
 						.anyRequest().denyAll())
 				.build();

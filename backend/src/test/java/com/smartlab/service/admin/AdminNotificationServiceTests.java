@@ -22,7 +22,9 @@ import com.smartlab.entity.Lab;
 import com.smartlab.entity.Notification;
 import com.smartlab.entity.NotificationRecipient;
 import com.smartlab.entity.User;
+import com.smartlab.enums.NotificationRelatedType;
 import com.smartlab.enums.NotificationTargetType;
+import com.smartlab.enums.UserAccountStatus;
 import com.smartlab.exception.InvalidAdminServiceInputException;
 import com.smartlab.repository.NotificationRecipientRepository;
 import com.smartlab.repository.NotificationRepository;
@@ -46,6 +48,34 @@ class AdminNotificationServiceTests {
 			notificationService,
 			auditLogService,
 			CLOCK);
+
+	@Test
+	void filterOptionsUseVisibleNotificationDataAndNeverLeakCreatorsAcrossLabs() {
+		UUID labId = UUID.randomUUID();
+		Lab lab = new Lab();
+		lab.setId(labId);
+		Lab otherLab = new Lab();
+		otherLab.setId(UUID.randomUUID());
+		User secondCreator = creator(UUID.randomUUID(), lab, "Zoe Admin", "zoe@smart.lab");
+		User firstCreator = creator(UUID.randomUUID(), lab, "Amara Admin", "amara@smart.lab");
+		User crossLabCreator = creator(UUID.randomUUID(), otherLab, "Other Admin", "other@smart.lab");
+		when(readRepository.findFilterOptions(labId)).thenReturn(
+				new AdminNotificationReadRepository.NotificationFilterLookup(
+						List.of(" SYSTEM_NOTICE ", "ADMIN_ANNOUNCEMENT", "SYSTEM_NOTICE", " "),
+						List.of(secondCreator, crossLabCreator, firstCreator, secondCreator)));
+
+		AdminNotificationService.NotificationFilterOptions result = service.getFilterOptions(labId);
+
+		assertEquals(List.of("ADMIN_ANNOUNCEMENT", "SYSTEM_NOTICE"), result.notificationTypes());
+		assertEquals(List.of("ADMIN_ANNOUNCEMENT"), result.creatableNotificationTypes());
+		assertEquals(
+				List.of(NotificationRelatedType.PROJECT.name(), NotificationRelatedType.PROJECT_JOIN_REQUEST.name()),
+				result.relatedTypes());
+		assertEquals(List.of(firstCreator.getId(), secondCreator.getId()),
+				result.creators().stream().map(AdminNotificationService.CreatorOption::id).toList());
+		assertEquals(UserAccountStatus.ACTIVE, result.creators().getFirst().accountStatus());
+		verify(readRepository).findFilterOptions(labId);
+	}
 
 	@Test
 	void createUserNotificationDelegatesToCoreServiceAndWritesAudit() {
@@ -189,6 +219,13 @@ class AdminNotificationServiceTests {
 		user.setId(id);
 		user.setLab(lab);
 		user.setFullName(fullName);
+		return user;
+	}
+
+	private static User creator(UUID id, Lab lab, String fullName, String email) {
+		User user = user(id, lab, fullName);
+		user.setEmail(email);
+		user.setAccountStatus(UserAccountStatus.ACTIVE);
 		return user;
 	}
 }
