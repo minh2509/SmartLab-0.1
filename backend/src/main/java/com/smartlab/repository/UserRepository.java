@@ -1,5 +1,6 @@
 package com.smartlab.repository;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -33,6 +34,11 @@ public interface UserRepository extends JpaRepository<User, UUID> {
 	List<User> findByAccountStatus(UserAccountStatus accountStatus);
 
 	List<User> findByLabAndAccountStatus(Lab lab, UserAccountStatus accountStatus);
+
+	List<User> findByIdInAndLabAndAccountStatus(
+			Collection<UUID> ids,
+			Lab lab,
+			UserAccountStatus accountStatus);
 
 	List<User> findByLabAndAccountStatusNot(Lab lab, UserAccountStatus accountStatus);
 }

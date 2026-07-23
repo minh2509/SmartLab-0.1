@@ -22,28 +22,57 @@ export function ProjectEditDialog({
   onClose,
   onSave,
   canEditLeaders,
+  accessToken,
+  pending = false,
+  serverError,
 }: {
   project: Project | null;
   open: boolean;
   onClose: () => void;
   onSave: (patch: Partial<Project>) => void;
   canEditLeaders: boolean;
+  accessToken?: string | null;
+  pending?: boolean;
+  serverError?: string | null;
 }) {
   const [form, setForm] = useState<Project | null>(project);
   const [error, setError] = useState<string | null>(null);
-  const { users } = useUsers();
+  const [remoteError, setRemoteError] = useState<string | null>(serverError ?? null);
+  const { users, loading: usersLoading, loadError: usersError } = useUsers(accessToken);
+  const creating = !project?.id;
+  const databaseMode = Boolean(accessToken);
 
   useEffect(() => {
     setForm(project);
     setError(null);
   }, [project, open]);
 
+  useEffect(() => setRemoteError(serverError ?? null), [serverError]);
+
   if (!open || !form) return null;
+
+  const updateForm = (patch: Partial<Project>) => {
+    setForm((current) => (current ? { ...current, ...patch } : current));
+    setError(null);
+    setRemoteError(null);
+  };
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (new Date(form.expectedEnd) < new Date(form.startDate)) {
-      setError("Expected end date must be after the start date.");
+    if (!form.code.trim()) {
+      setError("Project code is required.");
+      return;
+    }
+    if (!form.name.trim() || !form.description.trim() || !form.objective.trim()) {
+      setError("Name, description, and objective are required.");
+      return;
+    }
+    if (!form.startDate || !form.expectedEnd) {
+      setError("Start date and expected end date are required.");
+      return;
+    }
+    if (form.expectedEnd < form.startDate) {
+      setError("Expected end date must not be before the start date.");
       return;
     }
     if (form.leaderIds.length === 0) {
@@ -54,7 +83,13 @@ export function ProjectEditDialog({
       setError("Progress must be between 0 and 100.");
       return;
     }
+    if (form.fields.length === 0) {
+      setError("At least one research field is required.");
+      return;
+    }
+    setError(null);
     onSave({
+      code: form.code.trim(),
       name: form.name.trim(),
       description: form.description.trim(),
       objective: form.objective.trim(),
@@ -75,7 +110,7 @@ export function ProjectEditDialog({
   const leaderOptions = users.filter(
     (user) =>
       form.leaderIds.includes(user.id) ||
-      (user.status === "active" && user.roles.includes("leader")),
+      (user.status === "active" && (user.roles.includes("leader") || user.roles.includes("admin"))),
   );
   const memberOptions = users.filter(
     (user) => form.memberIds.includes(user.id) || user.status === "active",
@@ -96,9 +131,9 @@ export function ProjectEditDialog({
         <header className="flex items-center justify-between border-b border-hairline px-5 py-4">
           <div>
             <div className="text-[11px] uppercase tracking-[0.14em] text-ink-soft">
-              Edit project
+              {creating ? "Create project" : "Edit project"}
             </div>
-            <div className="font-mono text-xs text-ink-soft">{form.code}</div>
+            {!creating ? <div className="font-mono text-xs text-ink-soft">{form.code}</div> : null}
           </div>
           <button
             type="button"
@@ -111,11 +146,20 @@ export function ProjectEditDialog({
         </header>
 
         <div className="grid gap-4 p-5">
+          <Field label="Project code">
+            <input
+              className="input font-mono"
+              value={form.code}
+              onChange={(e) => updateForm({ code: e.target.value })}
+              maxLength={100}
+              required
+            />
+          </Field>
           <Field label="Name">
             <input
               className="input"
               value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
+              onChange={(e) => updateForm({ name: e.target.value })}
               required
             />
           </Field>
@@ -123,7 +167,7 @@ export function ProjectEditDialog({
             <textarea
               className="input min-h-[80px]"
               value={form.description}
-              onChange={(e) => setForm({ ...form, description: e.target.value })}
+              onChange={(e) => updateForm({ description: e.target.value })}
               required
             />
           </Field>
@@ -131,7 +175,7 @@ export function ProjectEditDialog({
             <textarea
               className="input min-h-[64px]"
               value={form.objective}
-              onChange={(e) => setForm({ ...form, objective: e.target.value })}
+              onChange={(e) => updateForm({ objective: e.target.value })}
               required
             />
           </Field>
@@ -141,7 +185,7 @@ export function ProjectEditDialog({
               <select
                 className="input"
                 value={form.type}
-                onChange={(e) => setForm({ ...form, type: e.target.value as ProjectType })}
+                onChange={(e) => updateForm({ type: e.target.value as ProjectType })}
               >
                 {TYPES.map((t) => (
                   <option key={t}>{t}</option>
@@ -152,27 +196,31 @@ export function ProjectEditDialog({
               <select
                 className="input"
                 value={form.status}
-                onChange={(e) => setForm({ ...form, status: e.target.value as ProjectStatus })}
+                onChange={(e) => updateForm({ status: e.target.value as ProjectStatus })}
               >
                 {STATUSES.map((s) => (
                   <option key={s}>{s}</option>
                 ))}
               </select>
             </Field>
-            <Field label="Start date">
+            <Field label="Start date *">
               <input
                 type="date"
                 className="input"
                 value={form.startDate}
-                onChange={(e) => setForm({ ...form, startDate: e.target.value })}
+                max={form.expectedEnd || undefined}
+                onChange={(e) => updateForm({ startDate: e.target.value })}
+                required
               />
             </Field>
-            <Field label="Expected end">
+            <Field label="Expected end *">
               <input
                 type="date"
                 className="input"
                 value={form.expectedEnd}
-                onChange={(e) => setForm({ ...form, expectedEnd: e.target.value })}
+                min={form.startDate || undefined}
+                onChange={(e) => updateForm({ expectedEnd: e.target.value })}
+                required
               />
             </Field>
             <Field label="Progress (%)">
@@ -182,19 +230,15 @@ export function ProjectEditDialog({
                 max={100}
                 className="input"
                 value={form.progress}
-                onChange={(e) => setForm({ ...form, progress: Number(e.target.value) })}
+                onChange={(e) => updateForm({ progress: Number(e.target.value) })}
+                required
               />
             </Field>
             <Field label="Visibility">
               <select
                 className="input"
                 value={form.visibility}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    visibility: e.target.value as ProjectVisibility,
-                  })
-                }
+                onChange={(e) => updateForm({ visibility: e.target.value as ProjectVisibility })}
               >
                 {VIS.map((v) => (
                   <option key={v} value={v}>
@@ -213,7 +257,8 @@ export function ProjectEditDialog({
                   <button
                     type="button"
                     key={k}
-                    onClick={() => setForm({ ...form, fields: toggle(form.fields, k) })}
+                    aria-pressed={active}
+                    onClick={() => updateForm({ fields: toggle(form.fields, k) })}
                     className={cn(
                       "rounded-full border px-2.5 py-1 text-xs transition-colors",
                       active
@@ -233,18 +278,16 @@ export function ProjectEditDialog({
               {leaderOptions.map((u) => {
                 const active = form.leaderIds.includes(u.id);
                 const disabled =
-                  !canEditLeaders || u.status === "locked" || !u.roles.includes("leader");
+                  !canEditLeaders ||
+                  u.status === "locked" ||
+                  (!u.roles.includes("leader") && !u.roles.includes("admin"));
                 return (
                   <button
                     key={u.id}
                     type="button"
                     disabled={disabled}
-                    onClick={() =>
-                      setForm({
-                        ...form,
-                        leaderIds: toggle(form.leaderIds, u.id),
-                      })
-                    }
+                    aria-pressed={active}
+                    onClick={() => updateForm({ leaderIds: toggle(form.leaderIds, u.id) })}
                     className={cn(
                       "rounded-full border px-2.5 py-1 text-xs transition-colors",
                       active
@@ -259,43 +302,52 @@ export function ProjectEditDialog({
                 );
               })}
             </div>
+            {usersLoading ? (
+              <div className="mt-2 text-xs text-ink-soft">Loading users...</div>
+            ) : null}
+            {usersError ? (
+              <div className="mt-2 text-xs text-[color:var(--destructive)]">{usersError}</div>
+            ) : null}
+            {!usersLoading && !usersError ? (
+              <div className="mt-2 text-xs text-ink-soft">
+                {form.leaderIds.length} leader{form.leaderIds.length === 1 ? "" : "s"} selected
+              </div>
+            ) : null}
           </Field>
 
-          <Field label="Members">
-            <div className="flex flex-wrap gap-1.5">
-              {memberOptions.map((u) => {
-                const active = form.memberIds.includes(u.id);
-                const disabled = u.status === "locked";
-                return (
-                  <button
-                    key={u.id}
-                    type="button"
-                    disabled={disabled}
-                    onClick={() =>
-                      setForm({
-                        ...form,
-                        memberIds: toggle(form.memberIds, u.id),
-                      })
-                    }
-                    className={cn(
-                      "rounded-full border px-2.5 py-1 text-xs transition-colors",
-                      active
-                        ? "border-ink bg-ink text-background"
-                        : "border-hairline text-ink-soft hover:text-ink",
-                      disabled && "cursor-not-allowed opacity-70 hover:text-ink-soft",
-                    )}
-                  >
-                    {u.fullName}
-                    {u.status === "locked" ? " · Locked" : ""}
-                  </button>
-                );
-              })}
-            </div>
-          </Field>
+          {!databaseMode ? (
+            <Field label="Members">
+              <div className="flex flex-wrap gap-1.5">
+                {memberOptions.map((u) => {
+                  const active = form.memberIds.includes(u.id);
+                  const disabled = u.status === "locked";
+                  return (
+                    <button
+                      key={u.id}
+                      type="button"
+                      disabled={disabled}
+                      aria-pressed={active}
+                      onClick={() => updateForm({ memberIds: toggle(form.memberIds, u.id) })}
+                      className={cn(
+                        "rounded-full border px-2.5 py-1 text-xs transition-colors",
+                        active
+                          ? "border-ink bg-ink text-background"
+                          : "border-hairline text-ink-soft hover:text-ink",
+                        disabled && "cursor-not-allowed opacity-70 hover:text-ink-soft",
+                      )}
+                    >
+                      {u.fullName}
+                      {u.status === "locked" ? " · Locked" : ""}
+                    </button>
+                  );
+                })}
+              </div>
+            </Field>
+          ) : null}
 
-          {error ? (
+          {error || remoteError ? (
             <div className="rounded-md border border-[color:var(--destructive)]/40 bg-[color-mix(in_oklab,var(--destructive)_10%,transparent)] px-3 py-2 text-xs text-[color:var(--destructive)]">
-              {error}
+              {error ?? remoteError}
             </div>
           ) : null}
         </div>
@@ -304,15 +356,17 @@ export function ProjectEditDialog({
           <button
             type="button"
             onClick={onClose}
+            disabled={pending}
             className="rounded-md border border-hairline px-3 py-1.5 text-sm text-ink hover:bg-muted"
           >
             Cancel
           </button>
           <button
             type="submit"
-            className="rounded-md bg-primary px-3.5 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90"
+            disabled={pending || usersLoading || Boolean(usersError)}
+            className="rounded-md bg-primary px-3.5 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Save changes
+            {pending ? "Saving..." : creating ? "Create project" : "Save changes"}
           </button>
         </footer>
       </form>

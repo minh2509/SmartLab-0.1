@@ -5,6 +5,9 @@ import java.util.Locale;
 import java.util.Objects;
 import java.util.function.Predicate;
 
+import org.springframework.stereotype.Service;
+
+@Service
 public class SlugService {
 
 	public String generateSlug(String input) {
