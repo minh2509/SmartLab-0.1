@@ -97,16 +97,98 @@ cd backend
 SPRING_PROFILES_ACTIVE=nodb ./mvnw clean test
 ```
 
+## ADM-055: Admin Post List and Search API
+
+- Name: List and search posts for administrators
+- Assignee: Minh
+- Status: `DONE`
+- Progress: 100%
+- Branch: `feature/minh-admin-post-query`
+- Endpoint: `GET /api/admin/posts`
+- Test result: 191 tests run, 0 failures, 0 errors; BUILD SUCCESS
+- Runtime result: PostgreSQL 18.4 contract verification passed
+- Notes: Implemented an ADMIN/SUPER_ADMIN-only, lab-scoped post listing API with pagination and optional keyword, status, content type, author, project, and visibility filters.
+- Notes: Soft-deleted posts are excluded; ordering is `createdAt DESC, id DESC`.
+- Notes: Fixed the nullable keyword PostgreSQL failure by normalizing a lowercase LIKE pattern in the service instead of applying `lower(...)` to a nullable query parameter.
+- Notes: Runtime fixture was removed successfully; remaining fixture labs, users, and posts are all zero.
+- Notes: PR #26 was merged into `main` with merge commit `b052b151ad5366bb42471ba3078bc34d2a105a1c`.
+
+### Scope
+
+- Admin post list controller
+- Paginated response and post summary DTOs
+- Admin post service and mapper
+- Lab-scoped repository query and explicit count query
+- Keyword and optional filters
+- Soft-delete exclusion
+- Stable pagination ordering
+- Controller, service, repository, structure, and security tests
+
+### Verification
+
+- Targeted ADM-055 tests: PASS
+- Full test suite: 191 passed, 0 failures
+- `./mvnw compile`: PASS
+- `git diff --check`: PASS
+- PostgreSQL runtime API assertions: PASS
+- Unauthorized request: HTTP 401
+- ADMIN request: HTTP 200
+- Invalid pagination and enum input: HTTP 400
+- Cross-lab and soft-deleted posts excluded
+- Runtime fixture cleanup: PASS
+
+## ADM-056: Admin Pending Post Queue API
+
+- Name: List posts waiting for administrator review
+- Assignee: Minh
+- Status: `DONE`
+- Progress: 100%
+- Branch: `feature/minh-admin-pending-posts`
+- Endpoint: `GET /api/admin/posts/pending`
+- Dependencies: ADM-055
+- Test result: 204 tests run, 0 failures, 0 errors; BUILD SUCCESS
+- Runtime result: PostgreSQL 18.4 API and queue-order contract verification passed
+- Scope: ADMIN/SUPER_ADMIN-only, lab-scoped, paginated pending-review queue.
+- Notes: Only return non-deleted `PENDING_REVIEW` posts.
+- Notes: Order by each post's latest `SUBMIT` moderation-log timestamp ascending; posts without a `SUBMIT` log remain visible and are placed last; use `post.id ASC` as the stable tie-breaker.
+- Notes: Reuse the ADM-055 page and summary response contracts; do not add a migration or change the existing list endpoint contract.
+- Notes: Targeted ADM-056 tests passed, including controller, service, repository-structure, and admin security coverage.
+- Notes: PostgreSQL runtime verified HTTP 401, 403, and 200 behavior; latest-SUBMIT ordering, UUID tie-breaks, null submission timestamps, stable pagination, lab isolation, soft-delete exclusion, and sensitive-field omission all passed.
+- Notes: Runtime fixtures and backend process were removed successfully; remaining fixture labs, users, user roles, posts, and moderation logs are all zero.
+- Notes: Implementation merged through PR #30 with merge commit `15d56023e2f9a412c6f8e6f86d442dbb085df4b4`.
+
+### Acceptance Criteria
+
+- `GET /api/admin/posts/pending` returns HTTP 200 for an authorized ADMIN or SUPER_ADMIN.
+- Results are restricted to the authenticated actor's lab.
+- Cross-lab, soft-deleted, and non-`PENDING_REVIEW` posts are excluded.
+- Pagination defaults to page 0 and size 20; size must be between 1 and 100.
+- The latest `SUBMIT` log determines the queue timestamp when a post has been submitted more than once.
+- Posts are ordered from oldest latest-submission timestamp to newest.
+- Pending posts without a `SUBMIT` log remain visible after posts with valid submission timestamps.
+- Equal or missing submission timestamps use `post.id ASC` for deterministic pagination.
+- No JPA entity, private post content, author email, password data, or review note is exposed.
+- Controller, service, repository, security, pagination, ordering, and PostgreSQL runtime behavior are verified.
+
+### Out of Scope
+
+- Post detail
+- Approve, reject, request-revision, publish, or delete operations
+- Frontend changes
+- Flyway migrations
+- Changes to the ADM-055 response contract
+
 ## DB-001: Review PostgreSQL Source Schema
 
 - Name: Review PostgreSQL source schema
 - Assignee: Minh
-- Status: `READY_FOR_REVIEW`
+- Status: `DONE`
 - Progress: 100%
 - Branch: `chore/db-schema-review`
 - Test result: Not applicable; documentation review only
 - Scope: Schema review and migration planning only
 - Notes: Completed immutable-source review of `docs/database/lab-source.sql`; conclusion is `NEEDS_REVISION` before migration preparation.
+- Notes: PR #8 merged into `main` with merge commit `0ebd072a691eb4929cf0ab3ec29f392cede1254e`.
 
 ## DB-002: Prepare PostgreSQL Migration Plan
 
@@ -245,9 +327,22 @@ SPRING_PROFILES_ACTIVE=nodb ./mvnw clean test
 
 - Name: Implement database-backed Spring Security foundation
 - Assignee: Minh
-- Status: `READY_FOR_REVIEW`
+- Status: `DONE`
 - Progress: 100%
 - Branch: `feature/minh-security-foundation`
 - Test result: `144 tests run, 0 failures, 0 errors, 0 skipped; PostgreSQL 18.4 authentication, BCrypt compatibility, active role authorization, JSON 401/403, stateless behavior, REST CSRF policy, application startup, and actuator health verified`
 - Scope: Database-backed user authentication, BCrypt password verification, SmartLab principal, active role mapping, stateless HTTP Basic, REST CSRF policy, JSON 401/403, Admin authorization rules, nodb compatibility, and security tests
 - Notes: Manual verification completed with temporary ADMIN and MEMBER accounts. ADMIN access returned HTTP 200, MEMBER access returned JSON HTTP 403, incorrect credentials returned JSON HTTP 401, authenticated invalid POST returned JSON HTTP 400, no session cookie was created, and Spring Boot no longer generated a development password. JWT, login endpoints, refresh tokens, logout, CORS, login history, and frontend integration remain deferred.
+- Notes: PR #21 was merged into `main`.
+
+## BE-010: Implement JWT access-token authentication API
+
+- Name: Implement JWT access-token authentication API
+- Assignee: Minh
+- Status: `DONE`
+- Progress: 100%
+- Branch: `feature/minh-jwt-auth-api`
+- Test result: `158 tests run, 0 failures, 0 errors, 0 skipped; local PostgreSQL 18.4 application context, JWT bean graph, login API, current-user API, Bearer authentication, Admin role authorization, JSON 400/401/403 responses, HTTP Basic removal, stateless behavior, REST CSRF policy, and actuator health verified`
+- Scope: Login API, current-user API, HS256 JWT issuing and validation, Bearer authentication, role claims, JSON authentication failures, stateless security, `nodb` compatibility, and tests
+- Notes: PR #22 was merged into `main`.
+- Notes: Manual verification completed with temporary ADMIN and MEMBER accounts. Health returned HTTP 200; ADMIN and MEMBER login returned HTTP 200 with Bearer access tokens; ADMIN access to the Admin API returned HTTP 200; MEMBER access returned JSON HTTP 403; `/api/auth/me` returned the authenticated user; incorrect password, tampered token, and HTTP Basic authentication returned JSON HTTP 401; authenticated invalid POST returned JSON HTTP 400; no session cookie was created. Temporary users and lab were removed successfully. Refresh tokens, logout persistence, token revocation, CORS, login history, password reset, and frontend integration remain deferred.
