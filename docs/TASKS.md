@@ -182,8 +182,9 @@ SPRING_PROFILES_ACTIVE=nodb ./mvnw clean test
 
 - Name: View complete post details for administrator moderation
 - Assignee: Minh
-- Status: `IN_PROGRESS`
+- Status: `DONE`
 - Progress: 100%
+- Completion: Merged through PR #33 at commit `ceb258c7273297f2cb67687136e9c212d4ef8003`.
 - Branch: `feature/minh-admin-post-detail`
 - Endpoint: `GET /api/admin/posts/{postId}`
 - Dependencies: ADM-055, ADM-056
