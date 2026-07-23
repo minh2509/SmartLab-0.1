@@ -137,6 +137,43 @@ SPRING_PROFILES_ACTIVE=nodb ./mvnw clean test
 - Cross-lab and soft-deleted posts excluded
 - Runtime fixture cleanup: PASS
 
+## ADM-056: Admin Pending Post Queue API
+
+- Name: List posts waiting for administrator review
+- Assignee: Minh
+- Status: `NOT_STARTED`
+- Progress: 0%
+- Branch: `feature/minh-admin-pending-posts`
+- Endpoint: `GET /api/admin/posts/pending`
+- Dependencies: ADM-055
+- Test result: Not run
+- Runtime result: Not run
+- Scope: ADMIN/SUPER_ADMIN-only, lab-scoped, paginated pending-review queue.
+- Notes: Only return non-deleted `PENDING_REVIEW` posts.
+- Notes: Order by each post's latest `SUBMIT` moderation-log timestamp ascending; posts without a `SUBMIT` log remain visible and are placed last; use `post.id ASC` as the stable tie-breaker.
+- Notes: Reuse the ADM-055 page and summary response contracts; do not add a migration or change the existing list endpoint contract.
+
+### Acceptance Criteria
+
+- `GET /api/admin/posts/pending` returns HTTP 200 for an authorized ADMIN or SUPER_ADMIN.
+- Results are restricted to the authenticated actor's lab.
+- Cross-lab, soft-deleted, and non-`PENDING_REVIEW` posts are excluded.
+- Pagination defaults to page 0 and size 20; size must be between 1 and 100.
+- The latest `SUBMIT` log determines the queue timestamp when a post has been submitted more than once.
+- Posts are ordered from oldest latest-submission timestamp to newest.
+- Pending posts without a `SUBMIT` log remain visible after posts with valid submission timestamps.
+- Equal or missing submission timestamps use `post.id ASC` for deterministic pagination.
+- No JPA entity, private post content, author email, password data, or review note is exposed.
+- Controller, service, repository, security, pagination, ordering, and PostgreSQL runtime behavior are verified.
+
+### Out of Scope
+
+- Post detail
+- Approve, reject, request-revision, publish, or delete operations
+- Frontend changes
+- Flyway migrations
+- Changes to the ADM-055 response contract
+
 ## DB-001: Review PostgreSQL Source Schema
 
 - Name: Review PostgreSQL source schema
