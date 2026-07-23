@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { useAuth } from "@/lib/auth";
+import { useAdminProjects } from "@/lib/admin-projects-api";
 import {
   useProjects,
   fieldMeta,
@@ -11,8 +12,7 @@ import {
 } from "@/lib/projects-data";
 import { PageHeader, Panel, StatusPill, EmptyState } from "@/components/app/ui";
 import { ProjectEditDialog } from "@/components/app/projects/ProjectEditDialog";
-import { DeleteProjectDialog } from "@/components/app/projects/DeleteProjectDialog";
-import { Pencil, Trash2, RotateCcw, ExternalLink, Search, X } from "lucide-react";
+import { Pencil, Trash2, ExternalLink, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { notifyOnce } from "@/lib/notifications-data";
 
@@ -24,17 +24,18 @@ export const Route = createFileRoute("/app/projects")({
 });
 
 function AppProjectsIndex() {
-  const { user, activeRole } = useAuth();
-  const { projects, update, remove, reset } = useProjects();
+  const { user, activeRole, accessToken } = useAuth();
+  const { projects: localProjects, update } = useProjects();
   const [q, setQ] = useState("");
   const [status, setStatus] = useState<"all" | ProjectStatus>("all");
+  const [page, setPage] = useState(0);
   const [editing, setEditing] = useState<Project | null>(null);
-  const [deleting, setDeleting] = useState<Project | null>(null);
-  const [resetOpen, setResetOpen] = useState(false);
 
   const userId = user?.id ?? "";
   const isAdmin = activeRole === "admin" && Boolean(user?.roles.includes("admin"));
   const isLeader = activeRole === "leader" && Boolean(user?.roles.includes("leader"));
+  const adminProjects = useAdminProjects(accessToken, isAdmin, page, 10, status);
+  const projects = isAdmin ? adminProjects.data.items : localProjects;
 
   const visible = useMemo(() => {
     if (!user) return [];
@@ -47,7 +48,7 @@ function AppProjectsIndex() {
   const filtered = useMemo(
     () =>
       visible.filter((p) => {
-        if (status !== "all" && p.status !== status) return false;
+        if (!isAdmin && status !== "all" && p.status !== status) return false;
         if (!q.trim()) return true;
         const t = q.toLowerCase();
         return (
@@ -56,7 +57,7 @@ function AppProjectsIndex() {
           p.description.toLowerCase().includes(t)
         );
       }),
-    [visible, q, status],
+    [visible, q, status, isAdmin],
   );
 
   const activeCount = visible.filter((p) => p.status === "Active").length;
@@ -80,20 +81,24 @@ function AppProjectsIndex() {
         }
         action={
           isAdmin ? (
-            <button
-              onClick={() => setResetOpen(true)}
-              className="inline-flex items-center gap-1.5 rounded-md border border-hairline bg-surface-elev px-3 py-1.5 text-xs text-ink-soft hover:text-ink"
-            >
-              <RotateCcw className="h-3.5 w-3.5" /> Reset demo data
-            </button>
+            <span className="rounded-md border border-hairline bg-surface-elev px-3 py-1.5 text-xs text-ink-soft">
+              Database - read only
+            </span>
           ) : undefined
         }
       />
 
       <div className="mb-6 grid gap-4 sm:grid-cols-3">
-        <MiniStat label="Visible projects" value={visible.length} />
-        <MiniStat label="Active" value={activeCount} tone="cyan" />
-        <MiniStat label="Publishing" value={publishingCount} tone="emerald" />
+        <MiniStat
+          label={isAdmin ? "Database projects" : "Visible projects"}
+          value={isAdmin ? adminProjects.data.totalElements : visible.length}
+        />
+        <MiniStat label={isAdmin ? "Active on page" : "Active"} value={activeCount} tone="cyan" />
+        <MiniStat
+          label={isAdmin ? "Publishing on page" : "Publishing"}
+          value={publishingCount}
+          tone="emerald"
+        />
       </div>
 
       <Panel
@@ -112,7 +117,10 @@ function AppProjectsIndex() {
             </div>
             <select
               value={status}
-              onChange={(e) => setStatus(e.target.value as "all" | ProjectStatus)}
+              onChange={(e) => {
+                setStatus(e.target.value as "all" | ProjectStatus);
+                setPage(0);
+              }}
               className="rounded-md border border-hairline bg-background px-2 py-1.5 text-xs text-ink"
             >
               <option value="all">All statuses</option>
@@ -128,13 +136,28 @@ function AppProjectsIndex() {
         }
         className="overflow-hidden"
       >
-        {filtered.length === 0 ? (
+        {isAdmin && adminProjects.loading ? (
+          <EmptyState title="Loading projects" hint="Reading the Admin project catalogue..." />
+        ) : isAdmin && adminProjects.error ? (
+          <div className="py-8 text-center">
+            <EmptyState title="Projects could not be loaded" hint={adminProjects.error} />
+            <button
+              type="button"
+              onClick={adminProjects.retry}
+              className="mt-3 rounded-md border border-hairline px-3 py-1.5 text-xs text-ink hover:bg-muted"
+            >
+              Try again
+            </button>
+          </div>
+        ) : filtered.length === 0 ? (
           <EmptyState
             title={
               visible.length === 0
-                ? isLeader
-                  ? "You are not leading any projects yet"
-                  : "No projects assigned to you"
+                ? isAdmin
+                  ? "No projects in the database"
+                  : isLeader
+                    ? "You are not leading any projects yet"
+                    : "No projects assigned to you"
                 : "No projects match your filters"
             }
             hint={
@@ -203,36 +226,38 @@ function AppProjectsIndex() {
                       <div className="flex items-center justify-end gap-1">
                         <Link
                           to="/app/projects/$slug"
-                          params={{ slug: p.slug }}
+                          params={{ slug: isAdmin ? p.id : p.slug }}
                           className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-ink-soft hover:bg-muted hover:text-ink"
                         >
                           <ExternalLink className="h-3.5 w-3.5" /> Open
                         </Link>
                         <button
-                          disabled={!canEdit(p)}
-                          onClick={() => canEdit(p) && setEditing(p)}
+                          disabled={isAdmin || !canEdit(p)}
+                          onClick={() => !isAdmin && canEdit(p) && setEditing(p)}
                           className={cn(
                             "inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs",
-                            canEdit(p)
+                            !isAdmin && canEdit(p)
                               ? "text-ink-soft hover:bg-muted hover:text-ink"
                               : "cursor-not-allowed text-ink-soft/40",
                           )}
                           title={
-                            canEdit(p) ? "Edit project" : "Only assigned leaders or admins can edit"
+                            isAdmin
+                              ? "Editing will be connected in PR3"
+                              : canEdit(p)
+                                ? "Edit project"
+                                : "Only assigned leaders or admins can edit"
                           }
                         >
                           <Pencil className="h-3.5 w-3.5" /> Edit
                         </button>
                         <button
-                          disabled={!isAdmin}
-                          onClick={() => isAdmin && setDeleting(p)}
-                          className={cn(
-                            "inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs",
+                          disabled
+                          className="inline-flex cursor-not-allowed items-center gap-1 rounded-md px-2 py-1 text-xs text-ink-soft/40"
+                          title={
                             isAdmin
-                              ? "text-[color:var(--destructive)] hover:bg-[color-mix(in_oklab,var(--destructive)_10%,transparent)]"
-                              : "cursor-not-allowed text-ink-soft/40",
-                          )}
-                          title={isAdmin ? "Delete project" : "Only administrators can delete"}
+                              ? "Deletion will be connected in PR3"
+                              : "Only administrators can delete"
+                          }
                         >
                           <Trash2 className="h-3.5 w-3.5" /> Delete
                         </button>
@@ -245,6 +270,33 @@ function AppProjectsIndex() {
           </div>
         )}
       </Panel>
+
+      {isAdmin &&
+      !adminProjects.loading &&
+      !adminProjects.error &&
+      adminProjects.data.totalPages > 1 ? (
+        <div className="mt-4 flex items-center justify-end gap-3 text-xs text-ink-soft">
+          <button
+            type="button"
+            disabled={adminProjects.data.page === 0}
+            onClick={() => setPage((value) => Math.max(0, value - 1))}
+            className="rounded-md border border-hairline px-3 py-1.5 text-ink disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Previous
+          </button>
+          <span>
+            Page {adminProjects.data.page + 1} of {adminProjects.data.totalPages}
+          </span>
+          <button
+            type="button"
+            disabled={adminProjects.data.page + 1 >= adminProjects.data.totalPages}
+            onClick={() => setPage((value) => value + 1)}
+            className="rounded-md border border-hairline px-3 py-1.5 text-ink disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Next
+          </button>
+        </div>
+      ) : null}
 
       <ProjectEditDialog
         project={editing}
@@ -272,101 +324,7 @@ function AppProjectsIndex() {
           setEditing(null);
         }}
       />
-      <DeleteProjectDialog
-        project={deleting}
-        open={!!deleting}
-        onClose={() => setDeleting(null)}
-        onConfirm={() => {
-          if (deleting) remove(deleting.id);
-          setDeleting(null);
-        }}
-      />
-      <ResetProjectsDialog
-        open={resetOpen}
-        onClose={() => setResetOpen(false)}
-        onConfirm={() => {
-          reset();
-          setResetOpen(false);
-        }}
-      />
     </>
-  );
-}
-
-function ResetProjectsDialog({
-  open,
-  onClose,
-  onConfirm,
-}: {
-  open: boolean;
-  onClose: () => void;
-  onConfirm: () => void;
-}) {
-  const [confirmation, setConfirmation] = useState("");
-  if (!open) return null;
-  const valid = confirmation.trim() === "RESET PROJECTS";
-  return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4 backdrop-blur-sm"
-      onMouseDown={onClose}
-    >
-      <div
-        onMouseDown={(event) => event.stopPropagation()}
-        className="w-full max-w-md rounded-xl border border-hairline bg-surface-elev shadow-xl"
-      >
-        <header className="flex items-start justify-between gap-4 border-b border-hairline px-5 py-4">
-          <div>
-            <div className="text-[11px] uppercase tracking-[0.14em] text-ink-soft">
-              Reset demo projects
-            </div>
-            <h2 className="mt-0.5 text-sm font-semibold text-ink">Restore project seed data</h2>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-md p-1 text-ink-soft hover:bg-muted hover:text-ink"
-            aria-label="Close"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </header>
-        <div className="space-y-4 p-5">
-          <p className="text-sm leading-relaxed text-ink-soft">
-            This resets the project catalogue only. Related demo records in other modules remain in
-            localStorage.
-          </p>
-          <label className="block">
-            <div className="mb-1 text-[11px] uppercase tracking-[0.14em] text-ink-soft">
-              Type RESET PROJECTS
-            </div>
-            <input
-              value={confirmation}
-              onChange={(event) => setConfirmation(event.target.value)}
-              className="w-full rounded-md border border-hairline bg-background px-2.5 py-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-[color:var(--cyan)]/40"
-            />
-          </label>
-        </div>
-        <footer className="flex items-center justify-end gap-2 border-t border-hairline px-5 py-4">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-md border border-hairline px-3 py-1.5 text-sm text-ink hover:bg-muted"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            disabled={!valid}
-            onClick={onConfirm}
-            className="rounded-md bg-primary px-3.5 py-1.5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            Reset projects
-          </button>
-        </footer>
-      </div>
-    </div>
   );
 }
 
