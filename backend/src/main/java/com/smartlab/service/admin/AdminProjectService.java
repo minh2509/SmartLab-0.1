@@ -372,6 +372,7 @@ public class AdminProjectService {
 				ProjectMember created = new ProjectMember();
 				created.setProject(project);
 				created.setUser(leader);
+				created.setJoinedAt(OffsetDateTime.now());
 				existing.add(created);
 				return created;
 			});

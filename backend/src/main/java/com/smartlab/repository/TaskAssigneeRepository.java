@@ -5,6 +5,7 @@ import java.util.UUID;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import com.smartlab.entity.Project;
 import com.smartlab.entity.Task;
 import com.smartlab.entity.TaskAssignee;
 import com.smartlab.entity.User;
@@ -13,6 +14,11 @@ import com.smartlab.enums.TaskAssigneeStatus;
 public interface TaskAssigneeRepository extends JpaRepository<TaskAssignee, UUID> {
 
 	boolean existsByTaskAndUser(Task task, User user);
+
+	boolean existsByTaskProjectAndUserAndStatus(
+			Project project,
+			User user,
+			TaskAssigneeStatus status);
 
 	List<TaskAssignee> findByTask(Task task);
 

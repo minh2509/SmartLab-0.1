@@ -23,6 +23,7 @@ import {
 import { notifyOnce } from "@/lib/notifications-data";
 import { PageHeader, Panel, StatusPill, EmptyState } from "@/components/app/ui";
 import { ProjectEditDialog } from "@/components/app/projects/ProjectEditDialog";
+import { AdminProjectMembersPanel } from "@/components/app/projects/AdminProjectMembersPanel";
 import { ProjectTasksPanel } from "@/components/app/projects/ProjectTasksPanel";
 import { ProjectEvaluationsPanel } from "@/components/app/projects/ProjectEvaluationsPanel";
 import { ArrowLeft, Pencil, Lock, X } from "lucide-react";
@@ -195,17 +196,25 @@ function WorkspaceProjectDetail() {
             title="Team"
             description={`${project.leaderIds.length + project.memberIds.length} people`}
           >
-            <div className="grid gap-3 sm:grid-cols-2">
-              {project.leaderIds.map((id) => (
-                <PersonRow key={id} id={id} role="Lead" />
-              ))}
-              {project.memberIds.map((id) => (
-                <PersonRow key={id} id={id} role="Member" />
-              ))}
-              {project.leaderIds.length + project.memberIds.length === 0 ? (
-                <div className="text-xs text-ink-soft">No one assigned.</div>
-              ) : null}
-            </div>
+            {isAdmin && accessToken ? (
+              <AdminProjectMembersPanel
+                token={accessToken}
+                projectId={project.id}
+                onChanged={adminProject.retry}
+              />
+            ) : (
+              <div className="grid gap-3 sm:grid-cols-2">
+                {project.leaderIds.map((id) => (
+                  <PersonRow key={id} id={id} role="Lead" />
+                ))}
+                {project.memberIds.map((id) => (
+                  <PersonRow key={id} id={id} role="Member" />
+                ))}
+                {project.leaderIds.length + project.memberIds.length === 0 ? (
+                  <div className="text-xs text-ink-soft">No one assigned.</div>
+                ) : null}
+              </div>
+            )}
           </Panel>
 
           <ProjectTasksPanel project={project} user={user} activeRole={activeRole} />
