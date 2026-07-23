@@ -225,13 +225,14 @@ SPRING_PROFILES_ACTIVE=nodb ./mvnw clean test
 
 - Name: Approve a pending post through the administrator moderation workflow
 - Assignee: Minh
-- Status: `IN_PROGRESS`
+- Status: `DONE`
 - Progress: 100%
 - Branch: `feature/minh-admin-approve-post`
 - Endpoint: `POST /api/admin/posts/{postId}/approve`
 - Dependencies: ADM-057
 - Test result: PASS — 72 targeted tests and 229 full-suite tests passed with 0 failures, 0 errors, and 0 skipped.
 - Runtime result: PASS — PostgreSQL 18.4 verified HTTP 401/403/400/404/409/200 behavior, Lab isolation, soft-delete hiding, DB-backed role revalidation, exact approval mutation/log contract, one-success/one-conflict concurrent approval, atomic rollback, fixture cleanup, and port cleanup.
+- Notes: Code PR #35 was squash-merged into `main` at `5aef28b91628100deebab51b9e6764a1bcab9ff3`.
 - Scope: ADMIN/SUPER_ADMIN-only, Lab-scoped, transactional post approval command.
 - Notes: The endpoint has no request body and returns HTTP 200 with a focused moderation-action response.
 - Notes: Only the `PENDING_REVIEW` to `APPROVED` transition is valid.
