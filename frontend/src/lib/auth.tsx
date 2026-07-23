@@ -16,6 +16,7 @@ export { roleLabel, type Role, type UserAccount };
 type AuthContextValue = {
   user: UserAccount | null;
   activeRole: Role | null;
+  accessToken: string | null;
   ready: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => void;
@@ -314,6 +315,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return {
       user,
       activeRole,
+      accessToken: session?.accessToken ?? null,
       ready,
       signIn,
       signOut,
