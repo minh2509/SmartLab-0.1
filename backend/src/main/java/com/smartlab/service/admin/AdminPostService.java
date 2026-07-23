@@ -14,13 +14,17 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.smartlab.dto.response.admin.AdminPostDetailResponse;
 import com.smartlab.dto.response.admin.AdminPostPageResponse;
 import com.smartlab.entity.Post;
 import com.smartlab.enums.PostContentType;
 import com.smartlab.enums.PostStatus;
 import com.smartlab.enums.PostVisibility;
 import com.smartlab.exception.InvalidAdminServiceInputException;
+import com.smartlab.exception.ResourceNotFoundException;
 import com.smartlab.mapper.AdminPostApiMapper;
+import com.smartlab.repository.PostAttachmentRepository;
+import com.smartlab.repository.PostModerationLogRepository;
 import com.smartlab.repository.PostRepository;
 
 @Service
@@ -32,14 +36,20 @@ public class AdminPostService {
 	private static final int MAX_SIZE = 100;
 
 	private final PostRepository postRepository;
+	private final PostAttachmentRepository postAttachmentRepository;
+	private final PostModerationLogRepository postModerationLogRepository;
 	private final AdminRolePolicy rolePolicy;
 	private final AdminPostApiMapper mapper;
 
 	public AdminPostService(
 			PostRepository postRepository,
+			PostAttachmentRepository postAttachmentRepository,
+			PostModerationLogRepository postModerationLogRepository,
 			AdminRolePolicy rolePolicy,
 			AdminPostApiMapper mapper) {
 		this.postRepository = postRepository;
+		this.postAttachmentRepository = postAttachmentRepository;
+		this.postModerationLogRepository = postModerationLogRepository;
 		this.rolePolicy = rolePolicy;
 		this.mapper = mapper;
 	}
@@ -99,6 +109,23 @@ public class AdminPostService {
 				orderedIdPage.getTotalElements()));
 	}
 
+	@Transactional(readOnly = true)
+	public AdminPostDetailResponse getPostDetail(GetAdminPostDetailQuery query) {
+		if (query == null) {
+			throw new InvalidAdminServiceInputException("Get admin post detail query must not be null.");
+		}
+		AdminRolePolicy.ActorContext actor = rolePolicy.requireAdminActor(query.actorUserId());
+		if (query.postId() == null) {
+			throw new InvalidAdminServiceInputException("Post ID must not be null.");
+		}
+		Post post = postRepository.findAdminPostDetail(actor.lab().getId(), query.postId())
+				.orElseThrow(() -> new ResourceNotFoundException("Post was not found."));
+		return mapper.toDetailResponse(
+				post,
+				postAttachmentRepository.findVisibleAdminPostAttachments(post),
+				postModerationLogRepository.findAdminPostModerationHistory(post));
+	}
+
 	private static int normalizedPage(Integer page) {
 		if (page == null) {
 			return DEFAULT_PAGE;
@@ -151,5 +178,10 @@ public class AdminPostService {
 			UUID actorUserId,
 			Integer page,
 			Integer size) {
+	}
+
+	public record GetAdminPostDetailQuery(
+			UUID actorUserId,
+			UUID postId) {
 	}
 }

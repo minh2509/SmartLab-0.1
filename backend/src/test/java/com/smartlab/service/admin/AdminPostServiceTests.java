@@ -29,19 +29,25 @@ import org.springframework.transaction.annotation.Transactional;
 import com.smartlab.entity.File;
 import com.smartlab.entity.Lab;
 import com.smartlab.entity.Post;
+import com.smartlab.entity.PostAttachment;
 import com.smartlab.entity.PostCategory;
+import com.smartlab.entity.PostModerationLog;
 import com.smartlab.entity.Project;
 import com.smartlab.entity.Role;
 import com.smartlab.entity.User;
 import com.smartlab.entity.UserRole;
 import com.smartlab.enums.PostContentType;
+import com.smartlab.enums.PostModerationAction;
 import com.smartlab.enums.PostStatus;
 import com.smartlab.enums.PostVisibility;
 import com.smartlab.enums.UserAccountStatus;
 import com.smartlab.enums.UserRoleStatus;
 import com.smartlab.exception.ForbiddenAdminOperationException;
 import com.smartlab.exception.InvalidAdminServiceInputException;
+import com.smartlab.exception.ResourceNotFoundException;
 import com.smartlab.mapper.AdminPostApiMapper;
+import com.smartlab.repository.PostAttachmentRepository;
+import com.smartlab.repository.PostModerationLogRepository;
 import com.smartlab.repository.PostRepository;
 import com.smartlab.repository.RoleRepository;
 import com.smartlab.repository.UserRepository;
@@ -50,12 +56,16 @@ import com.smartlab.repository.UserRoleRepository;
 class AdminPostServiceTests {
 
 	private final PostRepository postRepository = mock(PostRepository.class);
+	private final PostAttachmentRepository postAttachmentRepository = mock(PostAttachmentRepository.class);
+	private final PostModerationLogRepository postModerationLogRepository = mock(PostModerationLogRepository.class);
 	private final UserRepository userRepository = mock(UserRepository.class);
 	private final RoleRepository roleRepository = mock(RoleRepository.class);
 	private final UserRoleRepository userRoleRepository = mock(UserRoleRepository.class);
 	private final AdminRolePolicy rolePolicy = new AdminRolePolicy(userRepository, roleRepository, userRoleRepository);
 	private final AdminPostService service = new AdminPostService(
 			postRepository,
+			postAttachmentRepository,
+			postModerationLogRepository,
 			rolePolicy,
 			new AdminPostApiMapper());
 
@@ -437,6 +447,125 @@ class AdminPostServiceTests {
 	}
 
 	@Test
+	void getPostDetailRejectsNullQueryActorAndPostId() {
+		assertThrows(
+				InvalidAdminServiceInputException.class,
+				() -> service.getPostDetail(null));
+		assertThrows(
+				InvalidAdminServiceInputException.class,
+				() -> service.getPostDetail(new AdminPostService.GetAdminPostDetailQuery(
+						null,
+						UUID.randomUUID())));
+
+		Lab lab = lab(UUID.randomUUID());
+		User actor = user(UUID.randomUUID(), lab, UserAccountStatus.ACTIVE);
+		stubActiveActor(actor, role(UUID.randomUUID(), AdminRolePolicy.ADMIN_ROLE_CODE));
+		assertThrows(
+				InvalidAdminServiceInputException.class,
+				() -> service.getPostDetail(new AdminPostService.GetAdminPostDetailQuery(
+						actor.getId(),
+						null)));
+	}
+
+	@Test
+	void getPostDetailRejectsMissingActorOrActorWithoutCurrentAdminRole() {
+		UUID missingActorId = UUID.randomUUID();
+		when(userRepository.findById(missingActorId)).thenReturn(Optional.empty());
+
+		assertThrows(
+				ForbiddenAdminOperationException.class,
+				() -> service.getPostDetail(new AdminPostService.GetAdminPostDetailQuery(
+						missingActorId,
+						UUID.randomUUID())));
+
+		Lab lab = lab(UUID.randomUUID());
+		User memberActor = user(UUID.randomUUID(), lab, UserAccountStatus.ACTIVE);
+		stubActiveActor(memberActor, role(UUID.randomUUID(), AdminRolePolicy.MEMBER_ROLE_CODE));
+
+		assertThrows(
+				ForbiddenAdminOperationException.class,
+				() -> service.getPostDetail(new AdminPostService.GetAdminPostDetailQuery(
+						memberActor.getId(),
+						UUID.randomUUID())));
+	}
+
+	@Test
+	void getPostDetailUsesActorLabAndPostIdAndMapsOrderedChildren() {
+		Lab lab = lab(UUID.randomUUID());
+		User actor = user(UUID.randomUUID(), lab, UserAccountStatus.ACTIVE);
+		stubActiveActor(actor, role(UUID.randomUUID(), AdminRolePolicy.ADMIN_ROLE_CODE));
+		Post post = post(lab);
+		PostAttachment firstAttachment = attachment(post, "00000000-0000-0000-0000-000000000001");
+		PostAttachment secondAttachment = attachment(post, "00000000-0000-0000-0000-000000000002");
+		PostModerationLog firstLog = moderationLog(post, "00000000-0000-0000-0000-000000000011");
+		PostModerationLog secondLog = moderationLog(post, "00000000-0000-0000-0000-000000000012");
+		when(postRepository.findAdminPostDetail(lab.getId(), post.getId())).thenReturn(Optional.of(post));
+		when(postAttachmentRepository.findVisibleAdminPostAttachments(post))
+				.thenReturn(List.of(secondAttachment, firstAttachment));
+		when(postModerationLogRepository.findAdminPostModerationHistory(post))
+				.thenReturn(List.of(secondLog, firstLog));
+
+		var response = service.getPostDetail(new AdminPostService.GetAdminPostDetailQuery(
+				actor.getId(),
+				post.getId()));
+
+		verify(postRepository).findAdminPostDetail(lab.getId(), post.getId());
+		verify(postAttachmentRepository).findVisibleAdminPostAttachments(post);
+		verify(postModerationLogRepository).findAdminPostModerationHistory(post);
+		assertEquals(post.getId(), response.id());
+		assertEquals("Full private content", response.content());
+		assertEquals(post.getAuthor().getId(), response.author().id());
+		assertEquals("Author Name", response.author().fullName());
+		assertEquals(secondAttachment.getId(), response.attachments().get(0).attachmentId());
+		assertEquals(firstAttachment.getId(), response.attachments().get(1).attachmentId());
+		assertEquals(secondLog.getId(), response.moderationHistory().get(0).id());
+		assertEquals(firstLog.getId(), response.moderationHistory().get(1).id());
+	}
+
+	@Test
+	void getPostDetailAcceptsSuperAdminAndConvertsEmptyRootLookupToNotFound() {
+		Lab lab = lab(UUID.randomUUID());
+		User actor = user(UUID.randomUUID(), lab, UserAccountStatus.ACTIVE);
+		stubActiveActor(actor, role(UUID.randomUUID(), AdminRolePolicy.SUPER_ADMIN_ROLE_CODE));
+		UUID postId = UUID.randomUUID();
+		when(postRepository.findAdminPostDetail(lab.getId(), postId)).thenReturn(Optional.empty());
+
+		assertThrows(
+				ResourceNotFoundException.class,
+				() -> service.getPostDetail(new AdminPostService.GetAdminPostDetailQuery(
+						actor.getId(),
+						postId)));
+	}
+
+	@Test
+	void getPostDetailMapsOptionalRelationshipsAndSoftDeletedCoverSafely() {
+		Lab lab = lab(UUID.randomUUID());
+		User actor = user(UUID.randomUUID(), lab, UserAccountStatus.ACTIVE);
+		stubActiveActor(actor, role(UUID.randomUUID(), AdminRolePolicy.ADMIN_ROLE_CODE));
+		Post post = post(lab);
+		File deletedCoverFile = file(UUID.randomUUID());
+		deletedCoverFile.setDeletedAt(OffsetDateTime.parse("2026-07-22T10:15:30Z"));
+		post.setAuthor(null);
+		post.setProject(null);
+		post.setCategory(null);
+		post.setCoverFile(deletedCoverFile);
+		when(postRepository.findAdminPostDetail(lab.getId(), post.getId())).thenReturn(Optional.of(post));
+		when(postAttachmentRepository.findVisibleAdminPostAttachments(post)).thenReturn(List.of());
+		when(postModerationLogRepository.findAdminPostModerationHistory(post)).thenReturn(List.of());
+
+		var response = service.getPostDetail(new AdminPostService.GetAdminPostDetailQuery(
+				actor.getId(),
+				post.getId()));
+
+		assertNull(response.author());
+		assertNull(response.project());
+		assertNull(response.category());
+		assertNull(response.coverFile());
+		assertEquals(List.of(), response.attachments());
+		assertEquals(List.of(), response.moderationHistory());
+	}
+
+	@Test
 	void mapperHandlesNullOptionalRelationsAndPublishedAt() {
 		Post post = new Post();
 		post.setId(UUID.randomUUID());
@@ -472,6 +601,9 @@ class AdminPostServiceTests {
 		assertReadOnlyTransaction(AdminPostService.class.getMethod(
 				"listPendingPosts",
 				AdminPostService.ListPendingAdminPostsQuery.class));
+		assertReadOnlyTransaction(AdminPostService.class.getMethod(
+				"getPostDetail",
+				AdminPostService.GetAdminPostDetailQuery.class));
 	}
 
 	private void stubActiveActor(User actor, Role role) {
@@ -595,5 +727,41 @@ class AdminPostServiceTests {
 		post.setCreatedAt(OffsetDateTime.parse("2026-07-19T10:15:30Z"));
 		post.setUpdatedAt(OffsetDateTime.parse("2026-07-21T10:15:30Z"));
 		return post;
+	}
+
+	private static PostAttachment attachment(Post post, String attachmentId) {
+		PostAttachment attachment = new PostAttachment();
+		attachment.setId(UUID.fromString(attachmentId));
+		attachment.setPost(post);
+		attachment.setFile(file(UUID.randomUUID()));
+		attachment.setUploadedBy(user(UUID.randomUUID(), post.getLab(), UserAccountStatus.ACTIVE));
+		attachment.setCreatedAt(OffsetDateTime.parse("2026-07-20T10:15:30Z"));
+		return attachment;
+	}
+
+	private static PostModerationLog moderationLog(Post post, String logId) {
+		PostModerationLog log = new PostModerationLog();
+		log.setId(UUID.fromString(logId));
+		log.setPost(post);
+		log.setAction(PostModerationAction.SUBMIT);
+		log.setFromStatus(PostStatus.DRAFT);
+		log.setToStatus(PostStatus.PENDING_REVIEW);
+		log.setActor(user(UUID.randomUUID(), post.getLab(), UserAccountStatus.ACTIVE));
+		log.setReason("Submitted for review");
+		log.setCreatedAt(OffsetDateTime.parse("2026-07-20T10:15:30Z"));
+		return log;
+	}
+
+	private static File file(UUID fileId) {
+		File file = new File();
+		file.setId(fileId);
+		file.setOriginalName("paper.pdf");
+		file.setStoredName("internal-name");
+		file.setStoragePath("/private/storage/paper.pdf");
+		file.setMimeType("application/pdf");
+		file.setFileSize(1024L);
+		file.setFileExtension("pdf");
+		file.setCreatedAt(OffsetDateTime.parse("2026-07-20T10:15:30Z"));
+		return file;
 	}
 }

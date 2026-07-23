@@ -80,6 +80,9 @@ class ContentPersistenceRepositoryTests {
 		assertReturnType(
 				PostRepository.class.getMethod("findPendingAdminPostsByIdIn", UUID.class, Collection.class),
 				List.class);
+		assertReturnType(
+				PostRepository.class.getMethod("findAdminPostDetail", UUID.class, UUID.class),
+				Optional.class);
 	}
 
 	@Test
@@ -191,6 +194,9 @@ class ContentPersistenceRepositoryTests {
 		assertReturnType(
 				PostModerationLogRepository.class.getMethod("findByPostAndAction", Post.class, PostModerationAction.class),
 				List.class);
+		assertReturnType(
+				PostModerationLogRepository.class.getMethod("findAdminPostModerationHistory", Post.class),
+				List.class);
 	}
 
 	@Test
@@ -199,6 +205,41 @@ class ContentPersistenceRepositoryTests {
 		assertReturnType(PostAttachmentRepository.class.getMethod("findByPost", Post.class), List.class);
 		assertReturnType(PostAttachmentRepository.class.getMethod("findByFile", File.class), List.class);
 		assertReturnType(PostAttachmentRepository.class.getMethod("findByUploadedBy", User.class), List.class);
+		assertReturnType(
+				PostAttachmentRepository.class.getMethod("findVisibleAdminPostAttachments", Post.class),
+				List.class);
+	}
+
+	@Test
+	void adminPostDetailQueriesAreLabScopedVisibleAndDeterministic() throws NoSuchMethodException {
+		Method detailMethod = PostRepository.class.getMethod("findAdminPostDetail", UUID.class, UUID.class);
+		Query detailQuery = detailMethod.getAnnotation(Query.class);
+		EntityGraph detailGraph = detailMethod.getAnnotation(EntityGraph.class);
+		assertTrue(detailQuery.value().contains("post.id = :postId"));
+		assertTrue(detailQuery.value().contains("post.lab.id = :labId"));
+		assertTrue(detailQuery.value().contains("post.deletedAt is null"));
+		assertEquals(
+				List.of("author", "project", "category", "coverFile"),
+				List.of(detailGraph.attributePaths()));
+
+		Method attachmentMethod = PostAttachmentRepository.class.getMethod(
+				"findVisibleAdminPostAttachments",
+				Post.class);
+		Query attachmentQuery = attachmentMethod.getAnnotation(Query.class);
+		EntityGraph attachmentGraph = attachmentMethod.getAnnotation(EntityGraph.class);
+		assertTrue(attachmentQuery.value().contains("attachment.post = :post"));
+		assertTrue(attachmentQuery.value().contains("attachment.file.deletedAt is null"));
+		assertTrue(attachmentQuery.value().contains("order by attachment.createdAt asc, attachment.id asc"));
+		assertEquals(List.of("file", "uploadedBy"), List.of(attachmentGraph.attributePaths()));
+
+		Method moderationMethod = PostModerationLogRepository.class.getMethod(
+				"findAdminPostModerationHistory",
+				Post.class);
+		Query moderationQuery = moderationMethod.getAnnotation(Query.class);
+		EntityGraph moderationGraph = moderationMethod.getAnnotation(EntityGraph.class);
+		assertTrue(moderationQuery.value().contains("log.post = :post"));
+		assertTrue(moderationQuery.value().contains("order by log.createdAt asc, log.id asc"));
+		assertEquals(List.of("actor"), List.of(moderationGraph.attributePaths()));
 	}
 
 	private static void assertJpaRepository(Class<?> repositoryType) {

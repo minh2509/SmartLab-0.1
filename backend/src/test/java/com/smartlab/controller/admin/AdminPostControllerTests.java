@@ -23,9 +23,11 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.validation.beanvalidation.LocalValidatorFactoryBean;
 
+import com.smartlab.dto.response.admin.AdminPostDetailResponse;
 import com.smartlab.dto.response.admin.AdminPostPageResponse;
 import com.smartlab.dto.response.admin.AdminPostSummaryResponse;
 import com.smartlab.enums.PostContentType;
+import com.smartlab.enums.PostModerationAction;
 import com.smartlab.enums.PostStatus;
 import com.smartlab.enums.PostVisibility;
 import com.smartlab.exception.ApiExceptionHandler;
@@ -242,6 +244,79 @@ class AdminPostControllerTests {
 				.andExpect(jsonPath("$.status").value(401));
 	}
 
+	@Test
+	void getPostDetailReturnsFullDetailContractAndOmitsSensitiveFields() throws Exception {
+		UUID actorUserId = UUID.randomUUID();
+		UUID postId = UUID.randomUUID();
+		when(actorResolver.requireActorUserId()).thenReturn(actorUserId);
+		when(adminPostService.getPostDetail(any(AdminPostService.GetAdminPostDetailQuery.class)))
+				.thenReturn(detail(postId, false));
+
+		mockMvc.perform(get("/api/admin/posts/{postId}", postId))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.id").value(postId.toString()))
+				.andExpect(jsonPath("$.content").value("Full private content"))
+				.andExpect(jsonPath("$.author.id").exists())
+				.andExpect(jsonPath("$.author.fullName").value("Author Name"))
+				.andExpect(jsonPath("$.project.name").value("Project Name"))
+				.andExpect(jsonPath("$.category.name").value("Category Name"))
+				.andExpect(jsonPath("$.coverFile.originalName").value("cover.png"))
+				.andExpect(jsonPath("$.attachments[0].originalName").value("attachment.pdf"))
+				.andExpect(jsonPath("$.attachments[0].uploadedByName").value("Uploader Name"))
+				.andExpect(jsonPath("$.moderationHistory[0].action").value("SUBMIT"))
+				.andExpect(jsonPath("$.moderationHistory[0].actorName").value("Moderator Name"))
+				.andExpect(jsonPath("$.authorEmail").doesNotExist())
+				.andExpect(jsonPath("$.email").doesNotExist())
+				.andExpect(jsonPath("$.passwordHash").doesNotExist())
+				.andExpect(jsonPath("$.reviewNote").doesNotExist())
+				.andExpect(jsonPath("$.storedName").doesNotExist())
+				.andExpect(jsonPath("$.storagePath").doesNotExist())
+				.andExpect(jsonPath("$.deletedAt").doesNotExist())
+				.andExpect(content().string(not(containsString("author@example.edu"))))
+				.andExpect(content().string(not(containsString("stored-name"))))
+				.andExpect(content().string(not(containsString("/private/storage"))));
+
+		ArgumentCaptor<AdminPostService.GetAdminPostDetailQuery> captor =
+				ArgumentCaptor.forClass(AdminPostService.GetAdminPostDetailQuery.class);
+		verify(adminPostService).getPostDetail(captor.capture());
+		assertEquals(actorUserId, captor.getValue().actorUserId());
+		assertEquals(postId, captor.getValue().postId());
+	}
+
+	@Test
+	void getPostDetailSerializesNullableOptionalRelationships() throws Exception {
+		UUID actorUserId = UUID.randomUUID();
+		UUID postId = UUID.randomUUID();
+		when(actorResolver.requireActorUserId()).thenReturn(actorUserId);
+		when(adminPostService.getPostDetail(any(AdminPostService.GetAdminPostDetailQuery.class)))
+				.thenReturn(detail(postId, true));
+
+		mockMvc.perform(get("/api/admin/posts/{postId}", postId))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.project").doesNotExist())
+				.andExpect(jsonPath("$.category").doesNotExist())
+				.andExpect(jsonPath("$.coverFile").doesNotExist());
+	}
+
+	@Test
+	void detailRequestWithoutAuthenticatedActorIsUnauthorized() throws Exception {
+		when(actorResolver.requireActorUserId())
+				.thenThrow(new AuthenticationCredentialsNotFoundException("Authentication is required."));
+
+		mockMvc.perform(get("/api/admin/posts/{postId}", UUID.randomUUID()))
+				.andExpect(status().isUnauthorized())
+				.andExpect(jsonPath("$.status").value(401));
+	}
+
+	@Test
+	void malformedDetailPostIdReturnsBadRequest() throws Exception {
+		when(actorResolver.requireActorUserId()).thenReturn(UUID.randomUUID());
+
+		mockMvc.perform(get("/api/admin/posts/not-a-uuid"))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.message").value("Request validation failed."));
+	}
+
 	private static LocalValidatorFactoryBean validator() {
 		LocalValidatorFactoryBean validator = new LocalValidatorFactoryBean();
 		validator.afterPropertiesSet();
@@ -264,6 +339,56 @@ class AdminPostControllerTests {
 				UUID.randomUUID(),
 				"Category Name",
 				UUID.randomUUID(),
+				OffsetDateTime.parse("2026-07-20T10:15:30Z"),
+				OffsetDateTime.parse("2026-07-19T10:15:30Z"),
+				OffsetDateTime.parse("2026-07-21T10:15:30Z"));
+	}
+
+	private static AdminPostDetailResponse detail(UUID postId, boolean nullOptionalRelations) {
+		return new AdminPostDetailResponse(
+				postId,
+				"Post Title",
+				"post-title",
+				"Short summary",
+				"Full private content",
+				PostContentType.NEWS,
+				PostVisibility.PUBLIC,
+				PostStatus.PENDING_REVIEW,
+				new AdminPostDetailResponse.AuthorResponse(UUID.randomUUID(), "Author Name"),
+				nullOptionalRelations
+						? null
+						: new AdminPostDetailResponse.ProjectResponse(UUID.randomUUID(), "Project Name"),
+				nullOptionalRelations
+						? null
+						: new AdminPostDetailResponse.CategoryResponse(UUID.randomUUID(), "Category Name"),
+				nullOptionalRelations
+						? null
+						: new AdminPostDetailResponse.FileResponse(
+								UUID.randomUUID(),
+								"cover.png",
+								"image/png",
+								2048L,
+								"png",
+								OffsetDateTime.parse("2026-07-20T10:15:30Z")),
+				List.of(new AdminPostDetailResponse.AttachmentResponse(
+						UUID.randomUUID(),
+						UUID.randomUUID(),
+						"attachment.pdf",
+						"application/pdf",
+						1024L,
+						"pdf",
+						UUID.randomUUID(),
+						"Uploader Name",
+						OffsetDateTime.parse("2026-07-20T10:15:30Z"))),
+				List.of(new AdminPostDetailResponse.ModerationHistoryResponse(
+						UUID.randomUUID(),
+						PostModerationAction.SUBMIT,
+						PostStatus.DRAFT,
+						PostStatus.PENDING_REVIEW,
+						UUID.randomUUID(),
+						"Moderator Name",
+						"Submitted for review",
+						OffsetDateTime.parse("2026-07-20T10:15:30Z"))),
 				OffsetDateTime.parse("2026-07-20T10:15:30Z"),
 				OffsetDateTime.parse("2026-07-19T10:15:30Z"),
 				OffsetDateTime.parse("2026-07-21T10:15:30Z"));

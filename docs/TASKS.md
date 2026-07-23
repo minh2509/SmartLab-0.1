@@ -178,6 +178,48 @@ SPRING_PROFILES_ACTIVE=nodb ./mvnw clean test
 - Flyway migrations
 - Changes to the ADM-055 response contract
 
+## ADM-057: Admin Post Detail API
+
+- Name: View complete post details for administrator moderation
+- Assignee: Minh
+- Status: `IN_PROGRESS`
+- Progress: 100%
+- Branch: `feature/minh-admin-post-detail`
+- Endpoint: `GET /api/admin/posts/{postId}`
+- Dependencies: ADM-055, ADM-056
+- Test result: PASS — targeted 58 tests and full suite 215 tests; 0 failures, 0 errors, 0 skipped.
+- Runtime result: PASS — PostgreSQL API verification covered 401, 403, 200, 400, lab-scoped 404, soft-delete filtering, deterministic child ordering, sensitive-field exclusion, fixture cleanup, and port cleanup.
+- Scope: ADMIN/SUPER_ADMIN-only, lab-scoped, read-only post detail endpoint.
+- Notes: Missing, cross-lab, and soft-deleted posts must return the same HTTP 404 outcome.
+- Notes: Return full post content with safe author, project, category, cover-file, attachment, and moderation-history data.
+- Notes: Hide author email, authentication data, post review notes, storage paths, stored filenames, deleted files, and JPA entities.
+- Notes: Order attachments and moderation history by `createdAt ASC, id ASC`.
+- Notes: Do not change ADM-055 or ADM-056 behavior; do not add frontend or Flyway changes.
+
+### Acceptance Criteria
+
+- Authenticated ADMIN and SUPER_ADMIN receive HTTP 200 for a same-lab, non-deleted post.
+- Unauthenticated requests receive HTTP 401.
+- MEMBER and LEADER requests receive HTTP 403.
+- Missing, cross-lab, and soft-deleted posts receive HTTP 404.
+- The response includes full post content and safe nested metadata.
+- Optional project, category, and cover-file data may be null.
+- Soft-deleted cover files and attachment files are not exposed.
+- Attachments are ordered by `createdAt ASC, id ASC`.
+- Moderation history is ordered by `createdAt ASC, id ASC`.
+- No password, token, author email, review note, storage path, stored filename, or JPA entity is exposed.
+- Controller, service, mapper, repository, security, and PostgreSQL runtime behavior are verified.
+- Existing ADM-055 and ADM-056 contracts remain unchanged.
+
+### Out of Scope
+
+- Approve, reject, request-revision, publish, or delete operations
+- Post list and pending-queue changes
+- Frontend changes
+- File download or signed URL generation
+- Audit-log or notification writes
+- Flyway migrations
+
 ## DB-001: Review PostgreSQL Source Schema
 
 - Name: Review PostgreSQL source schema

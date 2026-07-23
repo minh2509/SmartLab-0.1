@@ -16,6 +16,7 @@ import com.smartlab.dto.request.admin.ReplaceUserRolesRequest;
 import com.smartlab.dto.request.admin.UpdateAdminUserRequest;
 import com.smartlab.dto.response.admin.AdminRoleCatalogResponse;
 import com.smartlab.dto.response.admin.AdminRoleResponse;
+import com.smartlab.dto.response.admin.AdminPostDetailResponse;
 import com.smartlab.dto.response.admin.AdminUserResponse;
 import com.smartlab.dto.response.admin.AdminUserRoleResponse;
 
@@ -43,6 +44,17 @@ class AdminApiStructureTests {
 		assertNoCredentialComponent(AdminRoleCatalogResponse.class);
 		assertNoCredentialComponent(AdminRoleResponse.class);
 		assertNoCredentialComponent(AdminUserRoleResponse.class);
+		assertNoCredentialComponent(AdminPostDetailResponse.class);
+		assertNoCredentialComponent(AdminPostDetailResponse.AuthorResponse.class);
+		assertNoCredentialComponent(AdminPostDetailResponse.AttachmentResponse.class);
+		assertNoCredentialComponent(AdminPostDetailResponse.ModerationHistoryResponse.class);
+		assertFalse(hasRecordComponent(AdminPostDetailResponse.class, "reviewNote"));
+		assertFalse(hasRecordComponent(AdminPostDetailResponse.FileResponse.class, "storedName"));
+		assertFalse(hasRecordComponent(AdminPostDetailResponse.FileResponse.class, "storagePath"));
+		assertFalse(hasRecordComponent(AdminPostDetailResponse.FileResponse.class, "deletedAt"));
+		assertFalse(hasRecordComponent(AdminPostDetailResponse.AttachmentResponse.class, "storedName"));
+		assertFalse(hasRecordComponent(AdminPostDetailResponse.AttachmentResponse.class, "storagePath"));
+		assertFalse(hasRecordComponent(AdminPostDetailResponse.AttachmentResponse.class, "deletedAt"));
 	}
 
 	private static void assertControllerBoundary(Class<?> controllerType) {
