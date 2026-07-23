@@ -4,10 +4,13 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.lang.reflect.Method;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.jpa.repository.JpaRepository;
 
@@ -21,6 +24,8 @@ import com.smartlab.entity.User;
 import com.smartlab.enums.ProjectJoinRequestStatus;
 import com.smartlab.enums.ProjectMemberStatus;
 import com.smartlab.enums.ProjectStatus;
+import com.smartlab.enums.ProjectType;
+import com.smartlab.enums.ProjectVisibility;
 
 class ProjectMembershipRepositoryTests {
 
@@ -39,6 +44,19 @@ class ProjectMembershipRepositoryTests {
 		assertReturnType(ProjectRepository.class.getMethod("existsByLabAndCode", Lab.class, String.class), boolean.class);
 		assertReturnType(ProjectRepository.class.getMethod("existsByLabAndSlug", Lab.class, String.class), boolean.class);
 		assertReturnType(ProjectRepository.class.getMethod("findByLabAndStatus", Lab.class, ProjectStatus.class), List.class);
+		assertReturnType(
+				ProjectRepository.class.getMethod("findByIdAndLabAndDeletedAtIsNull", UUID.class, Lab.class),
+				Optional.class);
+		assertReturnType(
+				ProjectRepository.class.getMethod(
+						"findAdminProjects",
+						Lab.class,
+						Collection.class,
+						Collection.class,
+						Collection.class,
+						String.class,
+						Pageable.class),
+				Page.class);
 	}
 
 	@Test
@@ -58,6 +76,15 @@ class ProjectMembershipRepositoryTests {
 						"findByProjectAndMemberStatus",
 						Project.class,
 						ProjectMemberStatus.class),
+				List.class);
+		assertReturnType(
+				ProjectMemberRepository.class.getMethod(
+						"findByProjectInAndMemberStatus",
+						Collection.class,
+						ProjectMemberStatus.class),
+				List.class);
+		assertReturnType(
+				ProjectResearchFieldRepository.class.getMethod("findByProjectIn", Collection.class),
 				List.class);
 	}
 

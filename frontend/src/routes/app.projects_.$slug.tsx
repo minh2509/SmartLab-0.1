@@ -1,6 +1,7 @@
 import { createFileRoute, Link, notFound } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth";
+import { useAdminProjectDetail, useAdminProjects } from "@/lib/admin-projects-api";
 import {
   useProjects,
   fieldMeta,
@@ -31,24 +32,66 @@ export const Route = createFileRoute("/app/projects_/$slug")({
 
 function WorkspaceProjectDetail() {
   const { slug } = Route.useParams();
-  const { user, activeRole } = useAuth();
-  const { projects, update, addMember } = useProjects();
+  const { user, activeRole, accessToken } = useAuth();
+  const { projects: localProjects, update, addMember } = useProjects();
   const { requests, approve, reject } = useJoinRequests();
   const [editing, setEditing] = useState(false);
   const [reviewing, setReviewing] = useState<ProjectJoinRequest | null>(null);
   const [reviewMode, setReviewMode] = useState<"approve" | "reject">("approve");
   const [reviewError, setReviewError] = useState<string | null>(null);
 
+  const isAdmin = activeRole === "admin" && Boolean(user?.roles.includes("admin"));
+  const hasProjectId =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(slug);
+  const adminProjects = useAdminProjects(accessToken, isAdmin && !hasProjectId, 0, 100, "all");
+  const adminProject = useAdminProjectDetail(
+    accessToken,
+    slug,
+    isAdmin && (hasProjectId || (!adminProjects.loading && !adminProjects.error)),
+    adminProjects.data.items,
+  );
+
   if (!user || !activeRole) return null;
-  const project = projects.find((p) => p.slug === slug);
+  if (isAdmin && !hasProjectId && adminProjects.loading) {
+    return <ProjectApiState title="Loading project" hint="Reading the project catalogue..." />;
+  }
+  if (isAdmin && !hasProjectId && adminProjects.error) {
+    return (
+      <ProjectApiState
+        title="Project could not be loaded"
+        hint={adminProjects.error}
+        onRetry={adminProjects.retry}
+      />
+    );
+  }
+  if (isAdmin && !hasProjectId && !adminProjects.data.items.some((item) => item.slug === slug)) {
+    throw notFound();
+  }
+  if (isAdmin && adminProject.loading) {
+    return <ProjectApiState title="Loading project details" hint="Reading project details..." />;
+  }
+  if (isAdmin && adminProject.error) {
+    return (
+      <ProjectApiState
+        title="Project details could not be loaded"
+        hint={adminProject.error}
+        onRetry={adminProject.retry}
+      />
+    );
+  }
+  const projects = isAdmin
+    ? adminProject.data
+      ? [adminProject.data]
+      : adminProjects.data.items
+    : localProjects;
+  const project = isAdmin ? adminProject.data : localProjects.find((p) => p.slug === slug);
   if (!project) throw notFound();
 
-  const isAdmin = activeRole === "admin" && user.roles.includes("admin");
   const isLeader =
     activeRole === "leader" && user.roles.includes("leader") && project.leaderIds.includes(user.id);
   const isAssignedLeader = user.roles.includes("leader") && project.leaderIds.includes(user.id);
   const isMember = project.memberIds.includes(user.id) || project.leaderIds.includes(user.id);
-  const canEdit = isAdmin || isLeader;
+  const canEdit = isLeader;
   const canView = isAdmin || isMember;
   const canReviewRequests =
     activeRole === "leader" && user.roles.includes("leader") && isAssignedLeader;
@@ -112,7 +155,7 @@ function WorkspaceProjectDetail() {
               </button>
             ) : (
               <span className="rounded-md border border-hairline px-2.5 py-1 text-[11px] text-ink-soft">
-                Read only
+                {isAdmin ? "Database - read only" : "Read only"}
               </span>
             )}
           </div>
@@ -501,6 +544,32 @@ function RequestMeta({ label, value }: { label: string; value: string }) {
     <div>
       <dt className="text-[11px] uppercase tracking-[0.14em] text-ink-soft">{label}</dt>
       <dd className="mt-1 leading-relaxed text-ink">{value}</dd>
+    </div>
+  );
+}
+
+function ProjectApiState({
+  title,
+  hint,
+  onRetry,
+}: {
+  title: string;
+  hint: string;
+  onRetry?: () => void;
+}) {
+  return (
+    <div className="mx-auto max-w-lg rounded-xl border border-hairline bg-surface-elev p-8 text-center">
+      <h2 className="text-sm font-semibold text-ink">{title}</h2>
+      <p className="mt-1 text-xs text-ink-soft">{hint}</p>
+      {onRetry ? (
+        <button
+          type="button"
+          onClick={onRetry}
+          className="mt-4 rounded-md border border-hairline px-3 py-1.5 text-xs text-ink hover:bg-muted"
+        >
+          Try again
+        </button>
+      ) : null}
     </div>
   );
 }
