@@ -2,6 +2,7 @@ package com.smartlab.service.admin;
 
 import java.time.Clock;
 import java.time.OffsetDateTime;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -34,6 +35,7 @@ import com.smartlab.mapper.AdminPostApiMapper;
 import com.smartlab.repository.PostAttachmentRepository;
 import com.smartlab.repository.PostModerationLogRepository;
 import com.smartlab.repository.PostRepository;
+import com.smartlab.service.common.AuditLogService;
 import com.smartlab.service.common.PostWorkflowService;
 
 @Service
@@ -49,6 +51,7 @@ public class AdminPostService {
 	private final PostModerationLogRepository postModerationLogRepository;
 	private final AdminRolePolicy rolePolicy;
 	private final PostWorkflowService workflowService;
+	private final AuditLogService auditLogService;
 	private final AdminPostApiMapper mapper;
 	private final Clock clock;
 
@@ -58,6 +61,7 @@ public class AdminPostService {
 			PostModerationLogRepository postModerationLogRepository,
 			AdminRolePolicy rolePolicy,
 			PostWorkflowService workflowService,
+			AuditLogService auditLogService,
 			AdminPostApiMapper mapper,
 			Clock clock) {
 		this.postRepository = postRepository;
@@ -65,6 +69,7 @@ public class AdminPostService {
 		this.postModerationLogRepository = postModerationLogRepository;
 		this.rolePolicy = rolePolicy;
 		this.workflowService = workflowService;
+		this.auditLogService = auditLogService;
 		this.mapper = mapper;
 		this.clock = clock;
 	}
@@ -228,6 +233,58 @@ public class AdminPostService {
 				reviewedAt);
 	}
 
+	@Transactional
+	public AdminPostModerationActionResponse publishPost(PublishAdminPostCommand command) {
+		if (command == null) {
+			throw new InvalidAdminServiceInputException("Publish admin post command must not be null.");
+		}
+		AdminRolePolicy.ActorContext actor = rolePolicy.requireAdminActor(command.actorUserId());
+		if (command.postId() == null) {
+			throw new InvalidAdminServiceInputException("Post ID must not be null.");
+		}
+		Post post = postRepository.findAdminPostForApproval(actor.lab().getId(), command.postId())
+				.orElseThrow(() -> new ResourceNotFoundException("Post was not found."));
+		PostStatus fromStatus = post.getModerationStatus();
+		PostStatus toStatus = PostStatus.PUBLISHED;
+		if (fromStatus != PostStatus.APPROVED) {
+			throw new ConflictingAdminOperationException("Only approved posts can be published.");
+		}
+		try {
+			workflowService.validateTransition(fromStatus, toStatus);
+		} catch (InvalidPostTransitionException exception) {
+			throw new ConflictingAdminOperationException(exception.getMessage());
+		}
+
+		Map<String, Object> oldValue = safePostAuditSnapshot(post);
+		OffsetDateTime publishedAt = OffsetDateTime.now(clock);
+		post.setModerationStatus(toStatus);
+		post.setPublishedAt(publishedAt);
+
+		PostModerationLog log = new PostModerationLog();
+		log.setPost(post);
+		log.setAction(PostModerationAction.PUBLISH);
+		log.setFromStatus(fromStatus);
+		log.setToStatus(toStatus);
+		log.setActor(actor.actor());
+		log.setReason(null);
+		postModerationLogRepository.save(log);
+
+		auditLogService.record(new AuditLogService.AuditCommand(
+				actor.actor().getId(),
+				"PUBLISH_POST",
+				"POST",
+				post.getId(),
+				oldValue,
+				safePostAuditSnapshot(post)));
+
+		return mapper.toModerationActionResponse(
+				post,
+				PostModerationAction.PUBLISH,
+				fromStatus,
+				toStatus,
+				post.getReviewedAt());
+	}
+
 	private static int normalizedPage(Integer page) {
 		if (page == null) {
 			return DEFAULT_PAGE;
@@ -285,6 +342,14 @@ public class AdminPostService {
 				PageRequest.of(page, size)));
 	}
 
+	private static Map<String, Object> safePostAuditSnapshot(Post post) {
+		Map<String, Object> snapshot = new LinkedHashMap<>();
+		snapshot.put("postId", post.getId());
+		snapshot.put("moderationStatus", post.getModerationStatus());
+		snapshot.put("publishedAt", post.getPublishedAt());
+		return snapshot;
+	}
+
 	public record ListAdminPostsQuery(
 			UUID actorUserId,
 			Integer page,
@@ -320,6 +385,11 @@ public class AdminPostService {
 	}
 
 	public record ApproveAdminPostCommand(
+			UUID actorUserId,
+			UUID postId) {
+	}
+
+	public record PublishAdminPostCommand(
 			UUID actorUserId,
 			UUID postId) {
 	}
