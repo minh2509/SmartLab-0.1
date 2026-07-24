@@ -136,6 +136,7 @@ class AuditLogServiceTests {
 	@Test
 	void recordRejectsUnknownActor() {
 		UUID actorId = UUID.randomUUID();
+		when(userRepository.findById(actorId)).thenReturn(Optional.empty());
 
 		assertThrows(ResourceNotFoundException.class, () -> service.record(
 				new AuditLogService.AuditCommand(actorId, "UPDATE", "PROJECT", null, null, null)));
