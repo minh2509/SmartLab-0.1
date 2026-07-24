@@ -119,6 +119,21 @@ class AuditLogServiceTests {
 	}
 
 	@Test
+	void recordRejectsNonJsonSerializableAuditValueBeforeSaving() {
+		IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> service.record(
+				new AuditLogService.AuditCommand(
+						null,
+						"UPDATE",
+						"PROJECT",
+						UUID.randomUUID(),
+						new NonJsonSerializableValue(),
+						null)));
+
+		assertEquals("Audit old value must be JSON serializable.", exception.getMessage());
+		verify(auditLogRepository, never()).save(any());
+	}
+
+	@Test
 	void recordRejectsUnknownActor() {
 		UUID actorId = UUID.randomUUID();
 
@@ -145,5 +160,12 @@ class AuditLogServiceTests {
 		user.setId(id);
 		user.setLab(lab);
 		return user;
+	}
+
+	private static final class NonJsonSerializableValue {
+
+		public String getBroken() {
+			throw new IllegalStateException("Cannot serialize this value.");
+		}
 	}
 }

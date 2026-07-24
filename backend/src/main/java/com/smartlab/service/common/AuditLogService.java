@@ -41,12 +41,14 @@ public class AuditLogService {
 			throw new IllegalArgumentException("Audit command must not be null.");
 		}
 
+		String action = requireTrimmed(command.action(), "Audit action", MAX_ACTION_LENGTH);
+		String entityType = requireTrimmed(command.entityType(), "Audit entity type", MAX_ENTITY_TYPE_LENGTH);
 		User actor = command.actorId() == null ? null : findActor(command.actorId());
 		AuditLog auditLog = new AuditLog();
 		auditLog.setActor(actor);
 		auditLog.setLab(actor == null ? null : actor.getLab());
-		auditLog.setAction(requireTrimmed(command.action(), "Audit action", MAX_ACTION_LENGTH));
-		auditLog.setEntityType(requireTrimmed(command.entityType(), "Audit entity type", MAX_ENTITY_TYPE_LENGTH));
+		auditLog.setAction(action);
+		auditLog.setEntityType(entityType);
 		auditLog.setEntityId(command.entityId());
 		auditLog.setOldValue(toJson(command.oldValue(), "old value"));
 		auditLog.setNewValue(toJson(command.newValue(), "new value"));
