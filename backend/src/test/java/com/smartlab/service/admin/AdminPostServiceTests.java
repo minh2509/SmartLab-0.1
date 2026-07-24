@@ -1256,6 +1256,263 @@ class AdminPostServiceTests {
 	}
 
 	@Test
+	void unpublishPostRejectsNullCommandActorAndPostId() {
+		assertThrows(
+				InvalidAdminServiceInputException.class,
+				() -> service.unpublishPost(null));
+		assertThrows(
+				InvalidAdminServiceInputException.class,
+				() -> service.unpublishPost(new AdminPostService.UnpublishAdminPostCommand(
+						null,
+						UUID.randomUUID())));
+
+		Lab lab = lab(UUID.randomUUID());
+		User actor = user(UUID.randomUUID(), lab, UserAccountStatus.ACTIVE);
+		stubActiveActor(actor, role(UUID.randomUUID(), AdminRolePolicy.ADMIN_ROLE_CODE));
+		assertThrows(
+				InvalidAdminServiceInputException.class,
+				() -> service.unpublishPost(new AdminPostService.UnpublishAdminPostCommand(
+						actor.getId(),
+						null)));
+	}
+
+	@Test
+	void unpublishPostRejectsActorsWithoutCurrentDatabaseAdminRole() {
+		Lab lab = lab(UUID.randomUUID());
+		User memberActor = user(UUID.randomUUID(), lab, UserAccountStatus.ACTIVE);
+		stubActiveActor(memberActor, role(UUID.randomUUID(), AdminRolePolicy.MEMBER_ROLE_CODE));
+		assertThrows(
+				ForbiddenAdminOperationException.class,
+				() -> service.unpublishPost(new AdminPostService.UnpublishAdminPostCommand(
+						memberActor.getId(),
+						UUID.randomUUID())));
+
+		User leaderActor = user(UUID.randomUUID(), lab, UserAccountStatus.ACTIVE);
+		stubActiveActor(leaderActor, role(UUID.randomUUID(), AdminRolePolicy.LEADER_ROLE_CODE));
+		assertThrows(
+				ForbiddenAdminOperationException.class,
+				() -> service.unpublishPost(new AdminPostService.UnpublishAdminPostCommand(
+						leaderActor.getId(),
+						UUID.randomUUID())));
+
+		User revokedActor = user(UUID.randomUUID(), lab, UserAccountStatus.ACTIVE);
+		when(userRepository.findById(revokedActor.getId())).thenReturn(Optional.of(revokedActor));
+		when(userRoleRepository.findByUserAndStatus(revokedActor, UserRoleStatus.ACTIVE)).thenReturn(List.of());
+		assertThrows(
+				ForbiddenAdminOperationException.class,
+				() -> service.unpublishPost(new AdminPostService.UnpublishAdminPostCommand(
+						revokedActor.getId(),
+						UUID.randomUUID())));
+	}
+
+	@Test
+	void unpublishPostReturnsGenericNotFoundForMissingCrossLabAndSoftDeletedPosts() {
+		Lab lab = lab(UUID.randomUUID());
+		User actor = user(UUID.randomUUID(), lab, UserAccountStatus.ACTIVE);
+		stubActiveActor(actor, role(UUID.randomUUID(), AdminRolePolicy.ADMIN_ROLE_CODE));
+		List<UUID> hiddenPostIds = List.of(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID());
+		for (UUID postId : hiddenPostIds) {
+			when(postRepository.findAdminPostForApproval(lab.getId(), postId)).thenReturn(Optional.empty());
+
+			ResourceNotFoundException exception = assertThrows(
+					ResourceNotFoundException.class,
+					() -> service.unpublishPost(new AdminPostService.UnpublishAdminPostCommand(
+							actor.getId(),
+							postId)));
+
+			assertEquals("Post was not found.", exception.getMessage());
+		}
+
+		verify(postModerationLogRepository, never()).save(any(PostModerationLog.class));
+		verify(auditLogService, never()).record(any(AuditLogService.AuditCommand.class));
+		verify(postRepository, never()).save(any(Post.class));
+	}
+
+	@Test
+	void unpublishPostUnpublishesPublishedPostWithModerationLogAuditAndSafeResponse() {
+		Lab lab = lab(UUID.randomUUID());
+		User actor = user(UUID.randomUUID(), lab, UserAccountStatus.ACTIVE);
+		User originalReviewer = user(UUID.randomUUID(), lab, UserAccountStatus.ACTIVE);
+		stubActiveActor(actor, role(UUID.randomUUID(), AdminRolePolicy.ADMIN_ROLE_CODE));
+		Post post = post(lab);
+		post.setModerationStatus(PostStatus.PUBLISHED);
+		OffsetDateTime originalPublishedAt = OffsetDateTime.parse("2026-07-20T10:15:30Z");
+		post.setPublishedAt(originalPublishedAt);
+		post.setReviewedBy(originalReviewer);
+		OffsetDateTime originalReviewedAt = OffsetDateTime.parse("2026-07-19T08:15:30Z");
+		post.setReviewedAt(originalReviewedAt);
+		post.setReviewNote("approved note");
+		String originalTitle = post.getTitle();
+		String originalSummary = post.getSummary();
+		String originalContent = post.getContent();
+		PostContentType originalContentType = post.getContentType();
+		PostVisibility originalVisibility = post.getVisibility();
+		User originalAuthor = post.getAuthor();
+		Project originalProject = post.getProject();
+		PostCategory originalCategory = post.getCategory();
+		when(postRepository.findAdminPostForApproval(lab.getId(), post.getId())).thenReturn(Optional.of(post));
+
+		var response = service.unpublishPost(new AdminPostService.UnpublishAdminPostCommand(
+				actor.getId(),
+				post.getId()));
+
+		ArgumentCaptor<PostModerationLog> logCaptor = ArgumentCaptor.forClass(PostModerationLog.class);
+		ArgumentCaptor<AuditLogService.AuditCommand> auditCaptor =
+				ArgumentCaptor.forClass(AuditLogService.AuditCommand.class);
+		verify(postRepository).findAdminPostForApproval(lab.getId(), post.getId());
+		verify(postModerationLogRepository).save(logCaptor.capture());
+		verify(auditLogService).record(auditCaptor.capture());
+		verify(postRepository, never()).save(any(Post.class));
+		PostModerationLog log = logCaptor.getValue();
+		assertEquals(PostStatus.APPROVED, post.getModerationStatus());
+		assertNull(post.getPublishedAt());
+		assertEquals(originalTitle, post.getTitle());
+		assertEquals(originalSummary, post.getSummary());
+		assertEquals(originalContent, post.getContent());
+		assertEquals(originalContentType, post.getContentType());
+		assertEquals(originalVisibility, post.getVisibility());
+		assertEquals(originalAuthor, post.getAuthor());
+		assertEquals(originalProject, post.getProject());
+		assertEquals(originalCategory, post.getCategory());
+		assertEquals(originalReviewer, post.getReviewedBy());
+		assertEquals(originalReviewedAt, post.getReviewedAt());
+		assertEquals("approved note", post.getReviewNote());
+		assertEquals(post, log.getPost());
+		assertEquals(PostModerationAction.UNPUBLISH, log.getAction());
+		assertEquals(PostStatus.PUBLISHED, log.getFromStatus());
+		assertEquals(PostStatus.APPROVED, log.getToStatus());
+		assertEquals(actor, log.getActor());
+		assertNull(log.getReason());
+		AuditLogService.AuditCommand audit = auditCaptor.getValue();
+		assertEquals(actor.getId(), audit.actorId());
+		assertEquals("UNPUBLISH_POST", audit.action());
+		assertEquals("POST", audit.entityType());
+		assertEquals(post.getId(), audit.entityId());
+		assertEquals(
+				auditSnapshot(post.getId(), PostStatus.PUBLISHED, originalPublishedAt),
+				audit.oldValue());
+		assertEquals(
+				auditSnapshot(post.getId(), PostStatus.APPROVED, null),
+				audit.newValue());
+		assertFalse(audit.oldValue().toString().contains(originalContent));
+		assertFalse(audit.newValue().toString().contains(originalContent));
+		assertEquals(post.getId(), response.postId());
+		assertEquals(PostModerationAction.UNPUBLISH, response.action());
+		assertEquals(PostStatus.PUBLISHED, response.fromStatus());
+		assertEquals(PostStatus.APPROVED, response.toStatus());
+		assertEquals(PostStatus.APPROVED, response.moderationStatus());
+		assertEquals(originalReviewer.getId(), response.reviewedById());
+		assertEquals(originalReviewer.getFullName(), response.reviewedByName());
+		assertEquals(originalReviewedAt, response.reviewedAt());
+	}
+
+	@Test
+	void unpublishPostAcceptsSuperAdmin() {
+		Lab lab = lab(UUID.randomUUID());
+		User actor = user(UUID.randomUUID(), lab, UserAccountStatus.ACTIVE);
+		stubActiveActor(actor, role(UUID.randomUUID(), AdminRolePolicy.SUPER_ADMIN_ROLE_CODE));
+		Post post = post(lab);
+		post.setModerationStatus(PostStatus.PUBLISHED);
+		when(postRepository.findAdminPostForApproval(lab.getId(), post.getId())).thenReturn(Optional.of(post));
+
+		var response = service.unpublishPost(new AdminPostService.UnpublishAdminPostCommand(
+				actor.getId(),
+				post.getId()));
+
+		assertEquals(PostStatus.APPROVED, response.moderationStatus());
+		verify(postModerationLogRepository).save(any(PostModerationLog.class));
+		verify(auditLogService).record(any(AuditLogService.AuditCommand.class));
+	}
+
+	@Test
+	void unpublishPostRejectsEveryInvalidSourceStatusWithoutMutationLogOrAudit() {
+		for (PostStatus status : List.of(
+				PostStatus.DRAFT,
+				PostStatus.PENDING_REVIEW,
+				PostStatus.NEEDS_REVISION,
+				PostStatus.APPROVED,
+				PostStatus.REJECTED)) {
+			org.mockito.Mockito.clearInvocations(
+					postRepository,
+					postModerationLogRepository,
+					auditLogService,
+					userRepository,
+					roleRepository,
+					userRoleRepository);
+			Lab lab = lab(UUID.randomUUID());
+			User actor = user(UUID.randomUUID(), lab, UserAccountStatus.ACTIVE);
+			stubActiveActor(actor, role(UUID.randomUUID(), AdminRolePolicy.ADMIN_ROLE_CODE));
+			Post post = post(lab);
+			post.setModerationStatus(status);
+			OffsetDateTime originalPublishedAt = post.getPublishedAt();
+			when(postRepository.findAdminPostForApproval(lab.getId(), post.getId())).thenReturn(Optional.of(post));
+
+			ConflictingAdminOperationException exception = assertThrows(
+					ConflictingAdminOperationException.class,
+					() -> service.unpublishPost(new AdminPostService.UnpublishAdminPostCommand(
+							actor.getId(),
+							post.getId())));
+
+			assertEquals("Only published posts can be unpublished.", exception.getMessage());
+			assertEquals(status, post.getModerationStatus());
+			assertEquals(originalPublishedAt, post.getPublishedAt());
+			verify(postModerationLogRepository, never()).save(any(PostModerationLog.class));
+			verify(auditLogService, never()).record(any(AuditLogService.AuditCommand.class));
+			verify(postRepository, never()).save(any(Post.class));
+		}
+	}
+
+	@Test
+	void unpublishPostPropagatesModerationLogSaveFailureForTransactionalRollback() {
+		Lab lab = lab(UUID.randomUUID());
+		User actor = user(UUID.randomUUID(), lab, UserAccountStatus.ACTIVE);
+		stubActiveActor(actor, role(UUID.randomUUID(), AdminRolePolicy.ADMIN_ROLE_CODE));
+		Post post = post(lab);
+		post.setModerationStatus(PostStatus.PUBLISHED);
+		RuntimeException failure = new RuntimeException("log insert failed");
+		when(postRepository.findAdminPostForApproval(lab.getId(), post.getId())).thenReturn(Optional.of(post));
+		when(postModerationLogRepository.save(any(PostModerationLog.class))).thenThrow(failure);
+
+		RuntimeException exception = assertThrows(
+				RuntimeException.class,
+				() -> service.unpublishPost(new AdminPostService.UnpublishAdminPostCommand(
+						actor.getId(),
+						post.getId())));
+
+		assertEquals(failure, exception);
+		verify(auditLogService, never()).record(any(AuditLogService.AuditCommand.class));
+		verify(postRepository, never()).save(any(Post.class));
+	}
+
+	@Test
+	void unpublishPostPropagatesAuditFailureForTransactionalRollback() {
+		Lab lab = lab(UUID.randomUUID());
+		User actor = user(UUID.randomUUID(), lab, UserAccountStatus.ACTIVE);
+		stubActiveActor(actor, role(UUID.randomUUID(), AdminRolePolicy.ADMIN_ROLE_CODE));
+		Post post = post(lab);
+		post.setModerationStatus(PostStatus.PUBLISHED);
+		RuntimeException failure = new RuntimeException("audit insert failed");
+		when(postRepository.findAdminPostForApproval(lab.getId(), post.getId())).thenReturn(Optional.of(post));
+		when(auditLogService.record(any(AuditLogService.AuditCommand.class))).thenThrow(failure);
+
+		RuntimeException exception = assertThrows(
+				RuntimeException.class,
+				() -> service.unpublishPost(new AdminPostService.UnpublishAdminPostCommand(
+						actor.getId(),
+						post.getId())));
+
+		assertEquals(failure, exception);
+		verify(postModerationLogRepository).save(any(PostModerationLog.class));
+		verify(postRepository, never()).save(any(Post.class));
+	}
+
+	@Test
+	void unpublishPostDoesNotDependOnNotificationCreation() {
+		assertFalse(java.util.Arrays.stream(AdminPostService.class.getDeclaredFields())
+				.anyMatch(field -> field.getType().getName().contains("Notification")));
+	}
+
+	@Test
 	void mapperHandlesNullOptionalRelationsAndPublishedAt() {
 		Post post = new Post();
 		post.setId(UUID.randomUUID());
@@ -1306,6 +1563,9 @@ class AdminPostServiceTests {
 		assertMutationTransaction(AdminPostService.class.getMethod(
 				"publishPost",
 				AdminPostService.PublishAdminPostCommand.class));
+		assertMutationTransaction(AdminPostService.class.getMethod(
+				"unpublishPost",
+				AdminPostService.UnpublishAdminPostCommand.class));
 	}
 
 	private void stubActiveActor(User actor, Role role) {

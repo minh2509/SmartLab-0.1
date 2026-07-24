@@ -285,6 +285,57 @@ public class AdminPostService {
 				post.getReviewedAt());
 	}
 
+	@Transactional
+	public AdminPostModerationActionResponse unpublishPost(UnpublishAdminPostCommand command) {
+		if (command == null) {
+			throw new InvalidAdminServiceInputException("Unpublish admin post command must not be null.");
+		}
+		AdminRolePolicy.ActorContext actor = rolePolicy.requireAdminActor(command.actorUserId());
+		if (command.postId() == null) {
+			throw new InvalidAdminServiceInputException("Post ID must not be null.");
+		}
+		Post post = postRepository.findAdminPostForApproval(actor.lab().getId(), command.postId())
+				.orElseThrow(() -> new ResourceNotFoundException("Post was not found."));
+		PostStatus fromStatus = post.getModerationStatus();
+		PostStatus toStatus = PostStatus.APPROVED;
+		if (fromStatus != PostStatus.PUBLISHED) {
+			throw new ConflictingAdminOperationException("Only published posts can be unpublished.");
+		}
+		try {
+			workflowService.validateTransition(fromStatus, toStatus);
+		} catch (InvalidPostTransitionException exception) {
+			throw new ConflictingAdminOperationException(exception.getMessage());
+		}
+
+		Map<String, Object> oldValue = safePostAuditSnapshot(post);
+		post.setModerationStatus(toStatus);
+		post.setPublishedAt(null);
+
+		PostModerationLog log = new PostModerationLog();
+		log.setPost(post);
+		log.setAction(PostModerationAction.UNPUBLISH);
+		log.setFromStatus(fromStatus);
+		log.setToStatus(toStatus);
+		log.setActor(actor.actor());
+		log.setReason(null);
+		postModerationLogRepository.save(log);
+
+		auditLogService.record(new AuditLogService.AuditCommand(
+				actor.actor().getId(),
+				"UNPUBLISH_POST",
+				"POST",
+				post.getId(),
+				oldValue,
+				safePostAuditSnapshot(post)));
+
+		return mapper.toModerationActionResponse(
+				post,
+				PostModerationAction.UNPUBLISH,
+				fromStatus,
+				toStatus,
+				post.getReviewedAt());
+	}
+
 	private static int normalizedPage(Integer page) {
 		if (page == null) {
 			return DEFAULT_PAGE;
@@ -390,6 +441,11 @@ public class AdminPostService {
 	}
 
 	public record PublishAdminPostCommand(
+			UUID actorUserId,
+			UUID postId) {
+	}
+
+	public record UnpublishAdminPostCommand(
 			UUID actorUserId,
 			UUID postId) {
 	}
