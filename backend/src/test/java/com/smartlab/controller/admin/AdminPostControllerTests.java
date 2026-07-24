@@ -636,6 +636,85 @@ class AdminPostControllerTests {
 				.andExpect(jsonPath("$.message").value("Post was not found."));
 	}
 
+	@Test
+	void unpublishPostReturnsModerationActionContractAndPassesActorAndPostId() throws Exception {
+		UUID actorUserId = UUID.randomUUID();
+		UUID postId = UUID.randomUUID();
+		UUID reviewedById = UUID.randomUUID();
+		when(actorResolver.requireActorUserId()).thenReturn(actorUserId);
+		when(adminPostService.unpublishPost(any(AdminPostService.UnpublishAdminPostCommand.class)))
+				.thenReturn(unpublishAction(postId, reviewedById));
+
+		mockMvc.perform(patch("/api/admin/posts/{postId}/unpublish", postId))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.postId").value(postId.toString()))
+				.andExpect(jsonPath("$.action").value("UNPUBLISH"))
+				.andExpect(jsonPath("$.fromStatus").value("PUBLISHED"))
+				.andExpect(jsonPath("$.toStatus").value("APPROVED"))
+				.andExpect(jsonPath("$.moderationStatus").value("APPROVED"))
+				.andExpect(jsonPath("$.reviewedById").value(reviewedById.toString()))
+				.andExpect(jsonPath("$.reviewedByName").value("Admin Reviewer"))
+				.andExpect(jsonPath("$.reviewedAt").value("2026-07-23T08:15:30Z"))
+				.andExpect(jsonPath("$.email").doesNotExist())
+				.andExpect(jsonPath("$.username").doesNotExist())
+				.andExpect(jsonPath("$.passwordHash").doesNotExist())
+				.andExpect(jsonPath("$.reviewNote").doesNotExist())
+				.andExpect(jsonPath("$.storagePath").doesNotExist())
+				.andExpect(jsonPath("$.deletedAt").doesNotExist())
+				.andExpect(content().string(not(containsString("admin@example.edu"))))
+				.andExpect(content().string(not(containsString("Full private content"))));
+
+		ArgumentCaptor<AdminPostService.UnpublishAdminPostCommand> captor =
+				ArgumentCaptor.forClass(AdminPostService.UnpublishAdminPostCommand.class);
+		verify(adminPostService).unpublishPost(captor.capture());
+		assertEquals(actorUserId, captor.getValue().actorUserId());
+		assertEquals(postId, captor.getValue().postId());
+	}
+
+	@Test
+	void unpublishPostRequestWithoutAuthenticatedActorIsUnauthorized() throws Exception {
+		when(actorResolver.requireActorUserId())
+				.thenThrow(new AuthenticationCredentialsNotFoundException("Authentication is required."));
+
+		mockMvc.perform(patch("/api/admin/posts/{postId}/unpublish", UUID.randomUUID()))
+				.andExpect(status().isUnauthorized())
+				.andExpect(jsonPath("$.status").value(401));
+	}
+
+	@Test
+	void malformedUnpublishPostIdReturnsBadRequest() throws Exception {
+		when(actorResolver.requireActorUserId()).thenReturn(UUID.randomUUID());
+
+		mockMvc.perform(patch("/api/admin/posts/not-a-uuid/unpublish"))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.message").value("Request validation failed."));
+	}
+
+	@Test
+	void unpublishPostConflictUsesExistingApiErrorFormat() throws Exception {
+		when(actorResolver.requireActorUserId()).thenReturn(UUID.randomUUID());
+		when(adminPostService.unpublishPost(any(AdminPostService.UnpublishAdminPostCommand.class)))
+				.thenThrow(new ConflictingAdminOperationException("Only published posts can be unpublished."));
+
+		mockMvc.perform(patch("/api/admin/posts/{postId}/unpublish", UUID.randomUUID()))
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.status").value(409))
+				.andExpect(jsonPath("$.error").value("Conflict"))
+				.andExpect(jsonPath("$.message").value("Only published posts can be unpublished."));
+	}
+
+	@Test
+	void unpublishPostMissingResourceUsesGenericNotFoundMessage() throws Exception {
+		when(actorResolver.requireActorUserId()).thenReturn(UUID.randomUUID());
+		when(adminPostService.unpublishPost(any(AdminPostService.UnpublishAdminPostCommand.class)))
+				.thenThrow(new ResourceNotFoundException("Post was not found."));
+
+		mockMvc.perform(patch("/api/admin/posts/{postId}/unpublish", UUID.randomUUID()))
+				.andExpect(status().isNotFound())
+				.andExpect(jsonPath("$.status").value(404))
+				.andExpect(jsonPath("$.message").value("Post was not found."));
+	}
+
 	private static LocalValidatorFactoryBean validator() {
 		LocalValidatorFactoryBean validator = new LocalValidatorFactoryBean();
 		validator.afterPropertiesSet();
@@ -743,6 +822,18 @@ class AdminPostControllerTests {
 				PostStatus.APPROVED,
 				PostStatus.PUBLISHED,
 				PostStatus.PUBLISHED,
+				reviewedById,
+				"Admin Reviewer",
+				OffsetDateTime.parse("2026-07-23T08:15:30Z"));
+	}
+
+	private static AdminPostModerationActionResponse unpublishAction(UUID postId, UUID reviewedById) {
+		return new AdminPostModerationActionResponse(
+				postId,
+				PostModerationAction.UNPUBLISH,
+				PostStatus.PUBLISHED,
+				PostStatus.APPROVED,
+				PostStatus.APPROVED,
 				reviewedById,
 				"Admin Reviewer",
 				OffsetDateTime.parse("2026-07-23T08:15:30Z"));

@@ -90,4 +90,11 @@ public class AdminPostController {
 				actorResolver.requireActorUserId(),
 				postId));
 	}
+
+	@PatchMapping("/{postId}/unpublish")
+	public AdminPostModerationActionResponse unpublishPost(@PathVariable UUID postId) {
+		return adminPostService.unpublishPost(new AdminPostService.UnpublishAdminPostCommand(
+				actorResolver.requireActorUserId(),
+				postId));
+	}
 }
