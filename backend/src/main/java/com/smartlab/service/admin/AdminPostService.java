@@ -2,14 +2,19 @@ package com.smartlab.service.admin;
 
 import java.time.Clock;
 import java.time.OffsetDateTime;
+import java.util.Collections;
+import java.util.IdentityHashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import org.springframework.context.annotation.Profile;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
@@ -34,7 +39,9 @@ import com.smartlab.mapper.AdminPostApiMapper;
 import com.smartlab.repository.PostAttachmentRepository;
 import com.smartlab.repository.PostModerationLogRepository;
 import com.smartlab.repository.PostRepository;
+import com.smartlab.service.common.AuditLogService;
 import com.smartlab.service.common.PostWorkflowService;
+import com.smartlab.service.common.SlugService;
 
 @Service
 @Profile("!nodb")
@@ -50,6 +57,8 @@ public class AdminPostService {
 	private final AdminRolePolicy rolePolicy;
 	private final PostWorkflowService workflowService;
 	private final AdminPostApiMapper mapper;
+	private final SlugService slugService;
+	private final AuditLogService auditLogService;
 	private final Clock clock;
 
 	public AdminPostService(
@@ -59,6 +68,8 @@ public class AdminPostService {
 			AdminRolePolicy rolePolicy,
 			PostWorkflowService workflowService,
 			AdminPostApiMapper mapper,
+			SlugService slugService,
+			AuditLogService auditLogService,
 			Clock clock) {
 		this.postRepository = postRepository;
 		this.postAttachmentRepository = postAttachmentRepository;
@@ -66,6 +77,8 @@ public class AdminPostService {
 		this.rolePolicy = rolePolicy;
 		this.workflowService = workflowService;
 		this.mapper = mapper;
+		this.slugService = slugService;
+		this.auditLogService = auditLogService;
 		this.clock = clock;
 	}
 
@@ -184,6 +197,63 @@ public class AdminPostService {
 	}
 
 	@Transactional
+	public AdminPostDetailResponse createLabAnnouncement(CreateAdminLabAnnouncementCommand command) {
+		if (command == null) {
+			throw new InvalidAdminServiceInputException("Create admin lab announcement command must not be null.");
+		}
+		AdminRolePolicy.ActorContext actor = rolePolicy.requireAdminActor(command.actorUserId());
+		String title = requireTrimmed(command.title(), "Title", 255);
+		String content = requireTrimmed(command.content(), "Content", null);
+		String summary = normalizedOptional(command.summary());
+		PostVisibility visibility = requireLabAnnouncementVisibility(command.visibility());
+		boolean publishNow = Boolean.TRUE.equals(command.publishNow());
+		OffsetDateTime publishedAt = publishNow ? OffsetDateTime.now(clock) : null;
+		PostStatus moderationStatus = publishNow ? PostStatus.PUBLISHED : PostStatus.DRAFT;
+		String slug = slugService.generateUniqueSlug(
+				title,
+				candidate -> postRepository.existsByLabAndSlug(actor.lab(), candidate));
+
+		Post post = new Post();
+		post.setLab(actor.lab());
+		post.setAuthor(actor.actor());
+		post.setProject(null);
+		post.setCategory(null);
+		post.setCoverFile(null);
+		post.setTitle(title);
+		post.setSlug(slug);
+		post.setSummary(summary);
+		post.setContent(content);
+		post.setContentType(PostContentType.LAB_ANNOUNCEMENT);
+		post.setVisibility(visibility);
+		post.setModerationStatus(moderationStatus);
+		post.setPublishedAt(publishedAt);
+		post.setReviewedBy(null);
+		post.setReviewedAt(null);
+		post.setReviewNote(null);
+
+		Post savedPost;
+		try {
+			savedPost = postRepository.saveAndFlush(post);
+		} catch (DataIntegrityViolationException exception) {
+			if (!isLabAnnouncementSlugConflict(exception)) {
+				throw exception;
+			}
+			throw new ConflictingAdminOperationException(
+					"A lab announcement with the generated slug already exists.");
+		}
+
+		auditLogService.record(new AuditLogService.AuditCommand(
+				actor.actor().getId(),
+				"CREATE_LAB_ANNOUNCEMENT",
+				"LAB_ANNOUNCEMENT",
+				savedPost.getId(),
+				null,
+				newLabAnnouncementAuditValue(savedPost)));
+
+		return mapper.toDetailResponse(savedPost, List.of(), List.of());
+	}
+
+	@Transactional
 	public AdminPostModerationActionResponse approvePost(ApproveAdminPostCommand command) {
 		if (command == null) {
 			throw new InvalidAdminServiceInputException("Approve admin post command must not be null.");
@@ -264,6 +334,58 @@ public class AdminPostService {
 		return "%" + escapedKeyword + "%";
 	}
 
+	private static String requireTrimmed(String value, String fieldName, Integer maximumLength) {
+		if (value == null || value.trim().isBlank()) {
+			throw new InvalidAdminServiceInputException(fieldName + " must not be blank.");
+		}
+		String trimmed = value.trim();
+		if (maximumLength != null && trimmed.length() > maximumLength) {
+			throw new InvalidAdminServiceInputException(fieldName + " must not exceed " + maximumLength + " characters.");
+		}
+		return trimmed;
+	}
+
+	private static String normalizedOptional(String value) {
+		if (value == null) {
+			return null;
+		}
+		String trimmed = value.trim();
+		return trimmed.isBlank() ? null : trimmed;
+	}
+
+	private static PostVisibility requireLabAnnouncementVisibility(PostVisibility visibility) {
+		if (visibility == null) {
+			throw new InvalidAdminServiceInputException("Visibility must not be null.");
+		}
+		if (visibility == PostVisibility.PROJECT_INTERNAL) {
+			throw new InvalidAdminServiceInputException("Lab announcements cannot use project-internal visibility.");
+		}
+		return visibility;
+	}
+
+	private static Map<String, Object> newLabAnnouncementAuditValue(Post post) {
+		Map<String, Object> value = new LinkedHashMap<>();
+		value.put("title", post.getTitle());
+		value.put("slug", post.getSlug());
+		value.put("contentType", post.getContentType());
+		value.put("visibility", post.getVisibility());
+		value.put("moderationStatus", post.getModerationStatus());
+		value.put("publishedAt", post.getPublishedAt());
+		return value;
+	}
+
+	private static boolean isLabAnnouncementSlugConflict(Throwable throwable) {
+		Throwable current = throwable;
+		Set<Throwable> seen = Collections.newSetFromMap(new IdentityHashMap<>());
+		while (current != null && seen.add(current)) {
+			if (current instanceof org.hibernate.exception.ConstraintViolationException exception) {
+				return "uq_posts_lab_slug".equalsIgnoreCase(exception.getConstraintName());
+			}
+			current = current.getCause();
+		}
+		return false;
+	}
+
 	private AdminPostPageResponse listPostsForActor(
 			Lab lab,
 			String keywordPattern,
@@ -317,6 +439,15 @@ public class AdminPostService {
 	public record GetAdminLabAnnouncementDetailQuery(
 			UUID actorUserId,
 			UUID postId) {
+	}
+
+	public record CreateAdminLabAnnouncementCommand(
+			UUID actorUserId,
+			String title,
+			String summary,
+			String content,
+			PostVisibility visibility,
+			Boolean publishNow) {
 	}
 
 	public record ApproveAdminPostCommand(
