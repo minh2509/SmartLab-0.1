@@ -336,6 +336,29 @@ public class AdminPostService {
 				post.getReviewedAt());
 	}
 
+	@Transactional
+	public void softDeletePost(DeleteAdminPostCommand command) {
+		if (command == null) {
+			throw new InvalidAdminServiceInputException("Delete admin post command must not be null.");
+		}
+		AdminRolePolicy.ActorContext actor = rolePolicy.requireAdminActor(command.actorUserId());
+		if (command.postId() == null) {
+			throw new InvalidAdminServiceInputException("Post ID must not be null.");
+		}
+		Post post = postRepository.findAdminPostForDeletion(actor.lab().getId(), command.postId())
+				.orElseThrow(() -> new ResourceNotFoundException("Post was not found."));
+
+		PostDeletionAuditSnapshot oldValue = safePostDeletionAuditSnapshot(post);
+		post.setDeletedAt(OffsetDateTime.now(clock));
+		auditLogService.record(new AuditLogService.AuditCommand(
+				actor.actor().getId(),
+				"DELETE_POST",
+				"POST",
+				post.getId(),
+				oldValue,
+				safePostDeletionAuditSnapshot(post)));
+	}
+
 	private static int normalizedPage(Integer page) {
 		if (page == null) {
 			return DEFAULT_PAGE;
@@ -401,6 +424,18 @@ public class AdminPostService {
 		return snapshot;
 	}
 
+	private static PostDeletionAuditSnapshot safePostDeletionAuditSnapshot(Post post) {
+		return new PostDeletionAuditSnapshot(
+				post.getId(),
+				post.getModerationStatus(),
+				post.getContentType(),
+				post.getVisibility(),
+				post.getPublishedAt(),
+				post.getReviewedBy() == null ? null : post.getReviewedBy().getId(),
+				post.getReviewedAt(),
+				post.getDeletedAt());
+	}
+
 	public record ListAdminPostsQuery(
 			UUID actorUserId,
 			Integer page,
@@ -448,5 +483,21 @@ public class AdminPostService {
 	public record UnpublishAdminPostCommand(
 			UUID actorUserId,
 			UUID postId) {
+	}
+
+	public record DeleteAdminPostCommand(
+			UUID actorUserId,
+			UUID postId) {
+	}
+
+	private record PostDeletionAuditSnapshot(
+			UUID postId,
+			PostStatus moderationStatus,
+			PostContentType contentType,
+			PostVisibility visibility,
+			OffsetDateTime publishedAt,
+			UUID reviewedById,
+			OffsetDateTime reviewedAt,
+			OffsetDateTime deletedAt) {
 	}
 }

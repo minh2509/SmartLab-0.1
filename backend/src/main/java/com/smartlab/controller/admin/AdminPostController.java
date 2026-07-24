@@ -3,7 +3,9 @@ package com.smartlab.controller.admin;
 import java.util.UUID;
 
 import org.springframework.context.annotation.Profile;
+import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -96,5 +98,13 @@ public class AdminPostController {
 		return adminPostService.unpublishPost(new AdminPostService.UnpublishAdminPostCommand(
 				actorResolver.requireActorUserId(),
 				postId));
+	}
+
+	@DeleteMapping("/{postId}")
+	public ResponseEntity<Void> deletePost(@PathVariable UUID postId) {
+		adminPostService.softDeletePost(new AdminPostService.DeleteAdminPostCommand(
+				actorResolver.requireActorUserId(),
+				postId));
+		return ResponseEntity.noContent().build();
 	}
 }

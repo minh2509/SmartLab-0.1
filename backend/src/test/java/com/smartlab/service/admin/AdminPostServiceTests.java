@@ -1513,6 +1513,234 @@ class AdminPostServiceTests {
 	}
 
 	@Test
+	void softDeletePostRejectsNullCommandActorAndPostId() {
+		assertThrows(
+				InvalidAdminServiceInputException.class,
+				() -> service.softDeletePost(null));
+		assertThrows(
+				InvalidAdminServiceInputException.class,
+				() -> service.softDeletePost(new AdminPostService.DeleteAdminPostCommand(
+						null,
+						UUID.randomUUID())));
+
+		Lab lab = lab(UUID.randomUUID());
+		User actor = user(UUID.randomUUID(), lab, UserAccountStatus.ACTIVE);
+		stubActiveActor(actor, role(UUID.randomUUID(), AdminRolePolicy.ADMIN_ROLE_CODE));
+		assertThrows(
+				InvalidAdminServiceInputException.class,
+				() -> service.softDeletePost(new AdminPostService.DeleteAdminPostCommand(
+						actor.getId(),
+						null)));
+	}
+
+	@Test
+	void softDeletePostRejectsMissingActorAndNonAdminActors() {
+		UUID missingActorId = UUID.randomUUID();
+		when(userRepository.findById(missingActorId)).thenReturn(Optional.empty());
+		assertThrows(
+				ForbiddenAdminOperationException.class,
+				() -> service.softDeletePost(new AdminPostService.DeleteAdminPostCommand(
+						missingActorId,
+						UUID.randomUUID())));
+
+		Lab lab = lab(UUID.randomUUID());
+		User memberActor = user(UUID.randomUUID(), lab, UserAccountStatus.ACTIVE);
+		stubActiveActor(memberActor, role(UUID.randomUUID(), AdminRolePolicy.MEMBER_ROLE_CODE));
+		assertThrows(
+				ForbiddenAdminOperationException.class,
+				() -> service.softDeletePost(new AdminPostService.DeleteAdminPostCommand(
+						memberActor.getId(),
+						UUID.randomUUID())));
+
+		User leaderActor = user(UUID.randomUUID(), lab, UserAccountStatus.ACTIVE);
+		stubActiveActor(leaderActor, role(UUID.randomUUID(), AdminRolePolicy.LEADER_ROLE_CODE));
+		assertThrows(
+				ForbiddenAdminOperationException.class,
+				() -> service.softDeletePost(new AdminPostService.DeleteAdminPostCommand(
+						leaderActor.getId(),
+						UUID.randomUUID())));
+
+		User revokedActor = user(UUID.randomUUID(), lab, UserAccountStatus.ACTIVE);
+		when(userRepository.findById(revokedActor.getId())).thenReturn(Optional.of(revokedActor));
+		when(userRoleRepository.findByUserAndStatus(revokedActor, UserRoleStatus.ACTIVE)).thenReturn(List.of());
+		assertThrows(
+				ForbiddenAdminOperationException.class,
+				() -> service.softDeletePost(new AdminPostService.DeleteAdminPostCommand(
+						revokedActor.getId(),
+						UUID.randomUUID())));
+	}
+
+	@Test
+	void softDeletePostReturnsGenericNotFoundForMissingCrossLabAndAlreadyDeletedPosts() {
+		Lab lab = lab(UUID.randomUUID());
+		User actor = user(UUID.randomUUID(), lab, UserAccountStatus.ACTIVE);
+		stubActiveActor(actor, role(UUID.randomUUID(), AdminRolePolicy.ADMIN_ROLE_CODE));
+		List<UUID> hiddenPostIds = List.of(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID());
+		for (UUID postId : hiddenPostIds) {
+			when(postRepository.findAdminPostForDeletion(lab.getId(), postId)).thenReturn(Optional.empty());
+
+			ResourceNotFoundException exception = assertThrows(
+					ResourceNotFoundException.class,
+					() -> service.softDeletePost(new AdminPostService.DeleteAdminPostCommand(
+							actor.getId(),
+							postId)));
+
+			assertEquals("Post was not found.", exception.getMessage());
+		}
+
+		verify(auditLogService, never()).record(any(AuditLogService.AuditCommand.class));
+		verify(postModerationLogRepository, never()).save(any(PostModerationLog.class));
+		verify(postRepository, never()).save(any(Post.class));
+		verify(postRepository, never()).delete(any(Post.class));
+	}
+
+	@Test
+	void softDeletePostSecondAttemptReturnsNotFoundAfterScopedLookupFiltersDeletedPost() {
+		Lab lab = lab(UUID.randomUUID());
+		User actor = user(UUID.randomUUID(), lab, UserAccountStatus.ACTIVE);
+		stubActiveActor(actor, role(UUID.randomUUID(), AdminRolePolicy.ADMIN_ROLE_CODE));
+		Post post = post(lab);
+		when(postRepository.findAdminPostForDeletion(lab.getId(), post.getId()))
+				.thenReturn(Optional.of(post), Optional.empty());
+
+		service.softDeletePost(new AdminPostService.DeleteAdminPostCommand(
+				actor.getId(),
+				post.getId()));
+		org.mockito.Mockito.clearInvocations(auditLogService, postModerationLogRepository, postRepository);
+
+		ResourceNotFoundException exception = assertThrows(
+				ResourceNotFoundException.class,
+				() -> service.softDeletePost(new AdminPostService.DeleteAdminPostCommand(
+						actor.getId(),
+						post.getId())));
+
+		assertEquals("Post was not found.", exception.getMessage());
+		verify(postRepository).findAdminPostForDeletion(lab.getId(), post.getId());
+		verify(auditLogService, never()).record(any(AuditLogService.AuditCommand.class));
+		verify(postModerationLogRepository, never()).save(any(PostModerationLog.class));
+		verify(postRepository, never()).save(any(Post.class));
+		verify(postRepository, never()).delete(any(Post.class));
+	}
+
+	@Test
+	void softDeletePostSetsDeletedAtAuditsSafeSnapshotsAndPreservesPostFieldsForAdmin() {
+		Lab lab = lab(UUID.randomUUID());
+		User actor = user(UUID.randomUUID(), lab, UserAccountStatus.ACTIVE);
+		User reviewer = user(UUID.randomUUID(), lab, UserAccountStatus.ACTIVE);
+		stubActiveActor(actor, role(UUID.randomUUID(), AdminRolePolicy.ADMIN_ROLE_CODE));
+		Post post = post(lab);
+		post.setReviewedBy(reviewer);
+		post.setReviewedAt(OffsetDateTime.parse("2026-07-20T09:15:30Z"));
+		post.setReviewNote("approved note");
+		String originalTitle = post.getTitle();
+		String originalSummary = post.getSummary();
+		String originalContent = post.getContent();
+		PostContentType originalContentType = post.getContentType();
+		PostVisibility originalVisibility = post.getVisibility();
+		PostStatus originalStatus = post.getModerationStatus();
+		OffsetDateTime originalPublishedAt = post.getPublishedAt();
+		User originalAuthor = post.getAuthor();
+		Project originalProject = post.getProject();
+		PostCategory originalCategory = post.getCategory();
+		File originalCoverFile = post.getCoverFile();
+		when(postRepository.findAdminPostForDeletion(lab.getId(), post.getId())).thenReturn(Optional.of(post));
+
+		service.softDeletePost(new AdminPostService.DeleteAdminPostCommand(
+				actor.getId(),
+				post.getId()));
+
+		ArgumentCaptor<AuditLogService.AuditCommand> auditCaptor =
+				ArgumentCaptor.forClass(AuditLogService.AuditCommand.class);
+		verify(postRepository).findAdminPostForDeletion(lab.getId(), post.getId());
+		verify(auditLogService).record(auditCaptor.capture());
+		verify(postRepository, never()).save(any(Post.class));
+		verify(postRepository, never()).delete(any(Post.class));
+		verify(postRepository, never()).deleteById(any(UUID.class));
+		verify(postModerationLogRepository, never()).save(any(PostModerationLog.class));
+		verify(postAttachmentRepository, never()).findVisibleAdminPostAttachments(any(Post.class));
+		verify(postModerationLogRepository, never()).findAdminPostModerationHistory(any(Post.class));
+		OffsetDateTime expectedDeletedAt = OffsetDateTime.parse("2026-07-23T08:15:30Z");
+		assertEquals(expectedDeletedAt, post.getDeletedAt());
+		assertEquals(originalTitle, post.getTitle());
+		assertEquals(originalSummary, post.getSummary());
+		assertEquals(originalContent, post.getContent());
+		assertEquals(originalContentType, post.getContentType());
+		assertEquals(originalVisibility, post.getVisibility());
+		assertEquals(originalStatus, post.getModerationStatus());
+		assertEquals(originalPublishedAt, post.getPublishedAt());
+		assertEquals(originalAuthor, post.getAuthor());
+		assertEquals(originalProject, post.getProject());
+		assertEquals(originalCategory, post.getCategory());
+		assertEquals(originalCoverFile, post.getCoverFile());
+		assertEquals(reviewer, post.getReviewedBy());
+		assertEquals(OffsetDateTime.parse("2026-07-20T09:15:30Z"), post.getReviewedAt());
+		assertEquals("approved note", post.getReviewNote());
+		AuditLogService.AuditCommand audit = auditCaptor.getValue();
+		assertEquals(actor.getId(), audit.actorId());
+		assertEquals("DELETE_POST", audit.action());
+		assertEquals("POST", audit.entityType());
+		assertEquals(post.getId(), audit.entityId());
+		assertDeletionSnapshot(audit.oldValue(), post, null);
+		assertDeletionSnapshot(audit.newValue(), post, expectedDeletedAt);
+		assertSafeDeletionSnapshot(audit.oldValue(), originalTitle, originalSummary, originalContent);
+		assertSafeDeletionSnapshot(audit.newValue(), originalTitle, originalSummary, originalContent);
+	}
+
+	@Test
+	void softDeletePostAcceptsSuperAdmin() {
+		Lab lab = lab(UUID.randomUUID());
+		User actor = user(UUID.randomUUID(), lab, UserAccountStatus.ACTIVE);
+		stubActiveActor(actor, role(UUID.randomUUID(), AdminRolePolicy.SUPER_ADMIN_ROLE_CODE));
+		Post post = post(lab);
+		when(postRepository.findAdminPostForDeletion(lab.getId(), post.getId())).thenReturn(Optional.of(post));
+
+		service.softDeletePost(new AdminPostService.DeleteAdminPostCommand(
+				actor.getId(),
+				post.getId()));
+
+		assertEquals(OffsetDateTime.parse("2026-07-23T08:15:30Z"), post.getDeletedAt());
+		verify(auditLogService).record(any(AuditLogService.AuditCommand.class));
+	}
+
+	@Test
+	void softDeletePostPropagatesAuditFailureForTransactionalRollback() {
+		Lab lab = lab(UUID.randomUUID());
+		User actor = user(UUID.randomUUID(), lab, UserAccountStatus.ACTIVE);
+		stubActiveActor(actor, role(UUID.randomUUID(), AdminRolePolicy.ADMIN_ROLE_CODE));
+		Post post = post(lab);
+		RuntimeException failure = new RuntimeException("audit insert failed");
+		when(postRepository.findAdminPostForDeletion(lab.getId(), post.getId())).thenReturn(Optional.of(post));
+		when(auditLogService.record(any(AuditLogService.AuditCommand.class))).thenThrow(failure);
+
+		RuntimeException exception = assertThrows(
+				RuntimeException.class,
+				() -> service.softDeletePost(new AdminPostService.DeleteAdminPostCommand(
+						actor.getId(),
+						post.getId())));
+
+		assertEquals(failure, exception);
+		verify(postRepository, never()).save(any(Post.class));
+		verify(postRepository, never()).delete(any(Post.class));
+		verify(postModerationLogRepository, never()).save(any(PostModerationLog.class));
+	}
+
+	@Test
+	void softDeletePostDoesNotDependOnNotificationCreation() {
+		assertFalse(java.util.Arrays.stream(AdminPostService.class.getDeclaredFields())
+				.anyMatch(field -> field.getType().getName().contains("Notification")));
+	}
+
+	@Test
+	void softDeletePostUsesPessimisticWriteScopedDeletionLookup() throws NoSuchMethodException {
+		Method deletionLookup = PostRepository.class.getMethod("findAdminPostForDeletion", UUID.class, UUID.class);
+		org.springframework.data.jpa.repository.Lock lock =
+				deletionLookup.getAnnotation(org.springframework.data.jpa.repository.Lock.class);
+
+		assertNotNull(lock);
+		assertEquals(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE, lock.value());
+	}
+
+	@Test
 	void mapperHandlesNullOptionalRelationsAndPublishedAt() {
 		Post post = new Post();
 		post.setId(UUID.randomUUID());
@@ -1566,6 +1794,9 @@ class AdminPostServiceTests {
 		assertMutationTransaction(AdminPostService.class.getMethod(
 				"unpublishPost",
 				AdminPostService.UnpublishAdminPostCommand.class));
+		assertMutationTransaction(AdminPostService.class.getMethod(
+				"softDeletePost",
+				AdminPostService.DeleteAdminPostCommand.class));
 	}
 
 	private void stubActiveActor(User actor, Role role) {
@@ -1729,6 +1960,44 @@ class AdminPostServiceTests {
 		snapshot.put("moderationStatus", moderationStatus);
 		snapshot.put("publishedAt", publishedAt);
 		return snapshot;
+	}
+
+	private static void assertDeletionSnapshot(Object snapshot, Post post, OffsetDateTime deletedAt) {
+		assertEquals(post.getId(), snapshotValue(snapshot, "postId"));
+		assertEquals(post.getModerationStatus(), snapshotValue(snapshot, "moderationStatus"));
+		assertEquals(post.getContentType(), snapshotValue(snapshot, "contentType"));
+		assertEquals(post.getVisibility(), snapshotValue(snapshot, "visibility"));
+		assertEquals(post.getPublishedAt(), snapshotValue(snapshot, "publishedAt"));
+		assertEquals(post.getReviewedBy().getId(), snapshotValue(snapshot, "reviewedById"));
+		assertEquals(post.getReviewedAt(), snapshotValue(snapshot, "reviewedAt"));
+		assertEquals(deletedAt, snapshotValue(snapshot, "deletedAt"));
+	}
+
+	private static void assertSafeDeletionSnapshot(
+			Object snapshot,
+			String originalTitle,
+			String originalSummary,
+			String originalContent) {
+		String renderedSnapshot = snapshot.toString();
+		assertFalse(renderedSnapshot.contains(originalTitle));
+		assertFalse(renderedSnapshot.contains(originalSummary));
+		assertFalse(renderedSnapshot.contains(originalContent));
+		assertFalse(renderedSnapshot.contains("author@example.edu"));
+		assertFalse(renderedSnapshot.contains("author"));
+		assertFalse(renderedSnapshot.contains("hash"));
+		assertFalse(renderedSnapshot.contains("approved note"));
+		assertFalse(renderedSnapshot.contains("internal-name"));
+		assertFalse(renderedSnapshot.contains("/private/storage/paper.pdf"));
+	}
+
+	private static Object snapshotValue(Object snapshot, String componentName) {
+		try {
+			Method componentAccessor = snapshot.getClass().getDeclaredMethod(componentName);
+			componentAccessor.setAccessible(true);
+			return componentAccessor.invoke(snapshot);
+		} catch (ReflectiveOperationException exception) {
+			throw new AssertionError("Audit snapshot is missing component " + componentName, exception);
+		}
 	}
 
 	private static File file(UUID fileId) {
