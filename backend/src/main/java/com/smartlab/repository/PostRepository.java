@@ -152,4 +152,16 @@ public interface PostRepository extends JpaRepository<Post, UUID> {
 	Optional<Post> findAdminPostForApproval(
 			@Param("labId") UUID labId,
 			@Param("postId") UUID postId);
+
+	@Lock(LockModeType.PESSIMISTIC_WRITE)
+	@Query("""
+			select post
+			from Post post
+			where post.id = :postId
+				and post.lab.id = :labId
+				and post.deletedAt is null
+			""")
+	Optional<Post> findAdminPostForDeletion(
+			@Param("labId") UUID labId,
+			@Param("postId") UUID postId);
 }

@@ -4,9 +4,12 @@ import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -710,6 +713,56 @@ class AdminPostControllerTests {
 				.thenThrow(new ResourceNotFoundException("Post was not found."));
 
 		mockMvc.perform(patch("/api/admin/posts/{postId}/unpublish", UUID.randomUUID()))
+				.andExpect(status().isNotFound())
+				.andExpect(jsonPath("$.status").value(404))
+				.andExpect(jsonPath("$.message").value("Post was not found."));
+	}
+
+	@Test
+	void deletePostReturnsNoContentAndPassesActorAndPostId() throws Exception {
+		UUID actorUserId = UUID.randomUUID();
+		UUID postId = UUID.randomUUID();
+		when(actorResolver.requireActorUserId()).thenReturn(actorUserId);
+
+		mockMvc.perform(delete("/api/admin/posts/{postId}", postId))
+				.andExpect(status().isNoContent())
+				.andExpect(content().string(""));
+
+		ArgumentCaptor<AdminPostService.DeleteAdminPostCommand> captor =
+				ArgumentCaptor.forClass(AdminPostService.DeleteAdminPostCommand.class);
+		verify(adminPostService).softDeletePost(captor.capture());
+		verifyNoMoreInteractions(adminPostService);
+		assertEquals(actorUserId, captor.getValue().actorUserId());
+		assertEquals(postId, captor.getValue().postId());
+	}
+
+	@Test
+	void deletePostRequestWithoutAuthenticatedActorIsUnauthorized() throws Exception {
+		when(actorResolver.requireActorUserId())
+				.thenThrow(new AuthenticationCredentialsNotFoundException("Authentication is required."));
+
+		mockMvc.perform(delete("/api/admin/posts/{postId}", UUID.randomUUID()))
+				.andExpect(status().isUnauthorized())
+				.andExpect(jsonPath("$.status").value(401));
+	}
+
+	@Test
+	void malformedDeletePostIdReturnsBadRequest() throws Exception {
+		when(actorResolver.requireActorUserId()).thenReturn(UUID.randomUUID());
+
+		mockMvc.perform(delete("/api/admin/posts/not-a-uuid"))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.message").value("Request validation failed."));
+	}
+
+	@Test
+	void deletePostMissingResourceUsesGenericNotFoundMessage() throws Exception {
+		when(actorResolver.requireActorUserId()).thenReturn(UUID.randomUUID());
+		doThrow(new ResourceNotFoundException("Post was not found."))
+				.when(adminPostService)
+				.softDeletePost(any(AdminPostService.DeleteAdminPostCommand.class));
+
+		mockMvc.perform(delete("/api/admin/posts/{postId}", UUID.randomUUID()))
 				.andExpect(status().isNotFound())
 				.andExpect(jsonPath("$.status").value(404))
 				.andExpect(jsonPath("$.message").value("Post was not found."));
